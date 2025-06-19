@@ -1,0 +1,14 @@
+(
+    listen_addr: "0.0.0.0",
+    listen_port: 9696,
+    model_paths: [],
+    db: (
+        init_timeout_secs: 5,
+        sqlite: (
+            db_path: "db/sd-models-manager.sqlite",
+        ),
+    ),
+    api: (
+        per_page: 20,
+    ),
+)
