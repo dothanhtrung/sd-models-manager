@@ -1,4 +1,4 @@
-//! TODO: To be done
+//! Copyright (c) 2025 Trung Do <dothanhtrung@pm.me>.
 
 use actix_web::web;
 

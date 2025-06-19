@@ -1,3 +1,5 @@
+//! Copyright (c) 2025 Trung Do <dothanhtrung@pm.me>.
+
 use crate::config::DBConfig;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;

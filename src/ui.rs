@@ -1,3 +1,5 @@
+//! Copyright (c) 2025 Trung Do <dothanhtrung@pm.me>.
+
 use actix_files::Files;
 use actix_web::web::Data;
 use actix_web::{error, get, web, HttpResponse, Responder};

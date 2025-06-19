@@ -1,3 +1,5 @@
+//! Copyright (c) 2025 Trung Do <dothanhtrung@pm.me>.
+
 use ron::ser::{to_string_pretty, PrettyConfig};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
