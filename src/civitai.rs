@@ -2,13 +2,16 @@
 
 use crate::config::Config;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::Client;
+use ron::ser::PrettyConfig;
 use serde::{Deserialize, Serialize};
+use serde_json::to_string_pretty;
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use reqwest::Client;
 use tracing::{error, info};
+use tracing_subscriber::fmt::format::Pretty;
 use walkdir::{DirEntry, WalkDir};
 
 fn is_hidden(entry: &DirEntry) -> bool {
@@ -54,7 +57,13 @@ async fn get_model_info(entry: &DirEntry, config: &Config) -> anyhow::Result<Civ
     );
 
     let client = Client::new();
-    let response = client.get(url).headers(headers).send().await?.json::<CivitaiResponse>().await?;
+    let response = client
+        .get(url)
+        .headers(headers)
+        .send()
+        .await?
+        .json::<CivitaiResponse>()
+        .await?;
 
     Ok(response)
 }
@@ -63,9 +72,16 @@ async fn download_info(entry: &DirEntry, mode_info: &CivitaiResponse, config: &C
     if let Some(ext) = entry.path().extension() {
         if let Some(ext) = ext.to_str() {
             if let Some(filepath) = entry.path().to_str() {
+                let info_file = filepath.replace(ext, "json");
                 let image_file = filepath.replace(ext, "jpeg");
-                let image_path = Path::new(&image_file);
 
+                let mut saved_file = File::create(info_file)?;
+                let info_str = to_string_pretty(mode_info)?;
+                saved_file
+                    .write_all(info_str.as_bytes())
+                    .map_err(|e| anyhow::anyhow!(e))?;
+
+                let image_path = Path::new(&image_file);
                 if image_path.exists() && !config.civitai.overwrite_thumbnail {
                     info!("File already exists: {}", image_path.display());
                     return Ok(());
@@ -78,7 +94,13 @@ async fn download_info(entry: &DirEntry, mode_info: &CivitaiResponse, config: &C
                         HeaderValue::from_str(&format!("Bearer {}", config.civitai.api_key))?,
                     );
                     let client = Client::new();
-                    let response = client.get(first_image.url.as_str()).headers(headers).send().await?.bytes().await?;
+                    let response = client
+                        .get(first_image.url.as_str())
+                        .headers(headers)
+                        .send()
+                        .await?
+                        .bytes()
+                        .await?;
                     let mut content = response.as_ref();
                     let mut file = File::create(image_path)?;
                     std::io::copy(&mut content, &mut file)?;
