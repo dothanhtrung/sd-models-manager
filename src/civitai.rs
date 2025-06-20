@@ -7,6 +7,7 @@ use ron::ser::PrettyConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string_pretty;
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -19,6 +20,7 @@ fn is_hidden(entry: &DirEntry) -> bool {
 }
 
 pub async fn update_model_info(config: &Config) -> anyhow::Result<()> {
+    let valid_ext = config.extensions.iter().collect::<HashSet<_>>();
     for base_path in config.model_paths.iter() {
         for entry in WalkDir::new(base_path)
             .follow_links(true)
@@ -33,25 +35,22 @@ pub async fn update_model_info(config: &Config) -> anyhow::Result<()> {
                     .unwrap_or_default()
                     .to_str()
                     .unwrap_or_default();
-                for ext in config.extensions.iter() {
-                    if ext == file_ext {
-                        info!("Update model info: {}", entry.path().display());
-                        if let Some(path) = entry.path().to_str() {
-                            match get_model_info(path, config.civitai.api_key.as_str()).await {
-                                Ok(info) => {
-                                    download_info(
-                                        ext,
-                                        path,
-                                        &info,
-                                        config.civitai.overwrite_thumbnail,
-                                        config.civitai.api_key.as_str(),
-                                    )
-                                    .await?
-                                }
-                                Err(e) => error!("Failed to download model info: {}", e),
+                if valid_ext.contains(&file_ext.to_string()) {
+                    info!("Update model info: {}", entry.path().display());
+                    if let Some(path) = entry.path().to_str() {
+                        match get_model_info(path, config.civitai.api_key.as_str()).await {
+                            Ok(info) => {
+                                download_info(
+                                    file_ext,
+                                    path,
+                                    &info,
+                                    config.civitai.overwrite_thumbnail,
+                                    config.civitai.api_key.as_str(),
+                                )
+                                .await?
                             }
+                            Err(e) => error!("Failed to download model info: {}", e),
                         }
-                        break;
                     }
                 }
             }
