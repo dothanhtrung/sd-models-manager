@@ -5,11 +5,11 @@
         "/home/trungdt/Projects/Rust/sd-models-manager",
     ],
     extensions: [
-        ".safetensors",
-        ".ckpt",
-        ".gguf",
-        ".pt",
-        ".pth",
+        "safetensors",
+        "ckpt",
+        "gguf",
+        "pt",
+        "pth",
     ],
     db: (
         init_timeout_secs: 5,

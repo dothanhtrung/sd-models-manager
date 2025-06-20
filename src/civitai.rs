@@ -27,13 +27,31 @@ pub async fn update_model_info(config: &Config) -> anyhow::Result<()> {
             .filter_map(|e| e.ok())
         {
             if entry.file_type().is_file() {
+                let file_ext = entry
+                    .path()
+                    .extension()
+                    .unwrap_or_default()
+                    .to_str()
+                    .unwrap_or_default();
                 for ext in config.extensions.iter() {
-                    if entry.file_name().to_str().unwrap_or_default().ends_with(ext) {
+                    if ext == file_ext {
                         info!("Update model info: {}", entry.path().display());
-                        match get_model_info(&entry, config).await {
-                            Ok(info) => download_info(&entry, &info, config).await?,
-                            Err(e) => error!("Failed to download model info: {}", e),
+                        if let Some(path) = entry.path().to_str() {
+                            match get_model_info(path, config.civitai.api_key.as_str()).await {
+                                Ok(info) => {
+                                    download_info(
+                                        ext,
+                                        path,
+                                        &info,
+                                        config.civitai.overwrite_thumbnail,
+                                        config.civitai.api_key.as_str(),
+                                    )
+                                    .await?
+                                }
+                                Err(e) => error!("Failed to download model info: {}", e),
+                            }
                         }
+                        break;
                     }
                 }
             }
@@ -42,19 +60,13 @@ pub async fn update_model_info(config: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn get_model_info(entry: &DirEntry, config: &Config) -> anyhow::Result<CivitaiResponse> {
-    let Some(path) = entry.path().to_str() else {
-        return Err(anyhow::anyhow!("path is empty"));
-    };
+async fn get_model_info(path: &str, api_key: &str) -> anyhow::Result<CivitaiResponse> {
     let hash = calculate_autov2_hash(path)?;
     let url = format!("https://civitai.com/api/v1/model-versions/by-hash/{}", hash);
 
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    headers.insert(
-        AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {}", config.civitai.api_key))?,
-    );
+    headers.insert(AUTHORIZATION, HeaderValue::from_str(&format!("Bearer {}", api_key))?);
 
     let client = Client::new();
     let response = client
@@ -68,45 +80,42 @@ async fn get_model_info(entry: &DirEntry, config: &Config) -> anyhow::Result<Civ
     Ok(response)
 }
 
-async fn download_info(entry: &DirEntry, mode_info: &CivitaiResponse, config: &Config) -> anyhow::Result<()> {
-    if let Some(ext) = entry.path().extension() {
-        if let Some(ext) = ext.to_str() {
-            if let Some(filepath) = entry.path().to_str() {
-                let info_file = filepath.replace(ext, "json");
-                let image_file = filepath.replace(ext, "jpeg");
+async fn download_info(
+    ext: &str,
+    filepath: &str,
+    mode_info: &CivitaiResponse,
+    overwrite_thumbnail: bool,
+    api_key: &str,
+) -> anyhow::Result<()> {
+    let info_file = filepath.replace(ext, "json");
+    let image_file = filepath.replace(ext, "jpeg");
 
-                let mut saved_file = File::create(info_file)?;
-                let info_str = to_string_pretty(mode_info)?;
-                saved_file
-                    .write_all(info_str.as_bytes())
-                    .map_err(|e| anyhow::anyhow!(e))?;
+    let mut saved_file = File::create(info_file)?;
+    let info_str = to_string_pretty(mode_info)?;
+    saved_file
+        .write_all(info_str.as_bytes())
+        .map_err(|e| anyhow::anyhow!(e))?;
 
-                let image_path = Path::new(&image_file);
-                if image_path.exists() && !config.civitai.overwrite_thumbnail {
-                    info!("File already exists: {}", image_path.display());
-                    return Ok(());
-                }
+    let image_path = Path::new(&image_file);
+    if image_path.exists() && !overwrite_thumbnail {
+        info!("File already exists: {}", image_path.display());
+        return Ok(());
+    }
 
-                if let Some(first_image) = mode_info.images.first() {
-                    let mut headers = HeaderMap::new();
-                    headers.insert(
-                        AUTHORIZATION,
-                        HeaderValue::from_str(&format!("Bearer {}", config.civitai.api_key))?,
-                    );
-                    let client = Client::new();
-                    let response = client
-                        .get(first_image.url.as_str())
-                        .headers(headers)
-                        .send()
-                        .await?
-                        .bytes()
-                        .await?;
-                    let mut content = response.as_ref();
-                    let mut file = File::create(image_path)?;
-                    std::io::copy(&mut content, &mut file)?;
-                }
-            }
-        }
+    if let Some(first_image) = mode_info.images.first() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, HeaderValue::from_str(&format!("Bearer {}", api_key))?);
+        let client = Client::new();
+        let response = client
+            .get(first_image.url.as_str())
+            .headers(headers)
+            .send()
+            .await?
+            .bytes()
+            .await?;
+        let mut content = response.as_ref();
+        let mut file = File::create(image_path)?;
+        std::io::copy(&mut content, &mut file)?;
     }
 
     Ok(())
