@@ -56,13 +56,21 @@ impl Default for APIConfig {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize, Default)]
+pub struct CivitaiConfig {
+    pub api_key: String,
+    pub overwrite_thumbnail: bool,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     pub listen_addr: String,
     pub listen_port: u32,
     pub model_paths: Vec<String>,
+    pub extensions: Vec<String>,
     pub db: DBConfig,
     pub api: APIConfig,
+    pub civitai: CivitaiConfig,
 }
 
 impl Default for Config {
@@ -70,9 +78,18 @@ impl Default for Config {
         Self {
             listen_addr: DEFAULT_LISTEN_ADDR.to_string(),
             listen_port: DEFAULT_LISTEN_PORT,
-            model_paths: Vec::new(),
+            model_paths: vec!["/workspace/models".to_string()],
+            extensions: vec![
+                ".safetensors".to_string(),
+                ".ckpt".to_string(),
+                ".gguf".to_string(),
+                ".pt".to_string(),
+                ".pth".to_string(),
+                ".bin".to_string(),
+            ],
             db: DBConfig::default(),
             api: APIConfig::default(),
+            civitai: CivitaiConfig::default(),
         }
     }
 }

@@ -1,7 +1,16 @@
 (
     listen_addr: "0.0.0.0",
     listen_port: 9696,
-    model_paths: [],
+    model_paths: [
+        "/home/trungdt/Projects/Rust/sd-models-manager",
+    ],
+    extensions: [
+        ".safetensors",
+        ".ckpt",
+        ".gguf",
+        ".pt",
+        ".pth",
+    ],
     db: (
         init_timeout_secs: 5,
         sqlite: (
@@ -10,5 +19,9 @@
     ),
     api: (
         per_page: 20,
+    ),
+    civitai: (
+        api_key: "",
+        overwrite_thumbnail: false,
     ),
 )
