@@ -23,5 +23,6 @@
     civitai: (
         api_key: "",
         overwrite_thumbnail: false,
+        save_json: false,
     ),
 )

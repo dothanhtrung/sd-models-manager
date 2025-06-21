@@ -60,6 +60,7 @@ impl Default for APIConfig {
 pub struct CivitaiConfig {
     pub api_key: String,
     pub overwrite_thumbnail: bool,
+    pub save_json: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
