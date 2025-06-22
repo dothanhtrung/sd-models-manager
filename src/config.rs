@@ -67,6 +67,7 @@ pub struct CivitaiConfig {
 pub struct Config {
     pub listen_addr: String,
     pub listen_port: u32,
+    pub walkdir_parallel: usize,
     pub model_paths: Vec<String>,
     pub extensions: Vec<String>,
     pub db: DBConfig,
@@ -79,6 +80,7 @@ impl Default for Config {
         Self {
             listen_addr: DEFAULT_LISTEN_ADDR.to_string(),
             listen_port: DEFAULT_LISTEN_PORT,
+            walkdir_parallel: 8,
             model_paths: vec!["/workspace/models".to_string()],
             extensions: vec![
                 "safetensors".to_string(),
