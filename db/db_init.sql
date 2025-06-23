@@ -1,25 +1,49 @@
-create table base
+create table app_info
 (
-    id    integer not null
-        constraint base_pk_2
-            primary key autoincrement,
-    label TEXT
-        constraint base_pk
-            unique
+    label TEXT    not null,
+    value integer not null
 );
 
-create table model
+create table base
 (
-    id      integer not null
-        constraint model_pk
+    id         integer              not null
+        constraint base_pk_2
             primary key autoincrement,
-    path    integer not null
-        constraint model_pk_2
+    label      TEXT                 not null
+        constraint base_pk
             unique,
-    base_id integer not null
-        constraint model_root_id_fk
-            references base
-            on delete cascade
+    is_checked integer default true not null
+);
+
+create table item
+(
+    id         integer              not null
+        constraint item_pk
+            primary key autoincrement,
+    path       TEXT                 not null,
+    base_id    integer              not null
+        constraint item_base_id_fk
+            references base,
+    hash       TEXT,
+    is_checked integer default true not null,
+    parent     integer
+        constraint item_item_id_fk
+            references item
+);
+
+create table sqlite_master
+(
+    type     TEXT,
+    name     TEXT,
+    tbl_name TEXT,
+    rootpage INT,
+    sql      TEXT
+);
+
+create table sqlite_sequence
+(
+    name,
+    seq
 );
 
 create table tag
@@ -36,18 +60,19 @@ create table tag
 create unique index tag_name_uindex
     on tag (name);
 
-create table tag_model
+create table tag_item
 (
-    tag   integer
-        constraint tag_model_tag_id_fk
+    tag  integer
+        constraint tag_item_tag_id_fk
             references tag
             on delete cascade,
-    model integer
+    item integer
         constraint tag_model_model_id_fk
-            references model
+            references item
             on delete cascade
 );
 
-create unique index tag_model_tag_model_uindex
-    on tag_model (tag, model);
+create unique index tag_item_item_tag_uindex
+    on tag_item (item, tag);
+
 

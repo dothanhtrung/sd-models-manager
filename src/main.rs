@@ -7,10 +7,10 @@ use tikv_jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
+mod api;
 mod civitai;
 mod config;
 mod db;
-mod rest_api;
 mod ui;
 
 use crate::civitai::update_model_info;
@@ -28,6 +28,7 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tracing::{error, warn};
 use tracing_subscriber::EnvFilter;
+use crate::api::{get, reload_from_disk};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -47,6 +48,8 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
+
     // Subscriber that prints formatted traces to stdout
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
@@ -96,16 +99,16 @@ async fn main() -> anyhow::Result<()> {
     let listen_addr = format!("{}:{}", &config.listen_addr, &config.listen_port);
     let model_paths = config.model_paths.clone();
     let ref_db_pool = Arc::new(db_pool);
-    let ref_config = Arc::new(Mutex::new(config));
+    let ref_config = Arc::new(config);
 
     HttpServer::new(move || {
-        let mut app = App::new()
+         let mut app = App::new()
             .app_data(Data::from(ref_db_pool.clone()))
             .app_data(Data::from(ref_config.clone()))
             .wrap(middleware::NormalizePath::trim())
-            .service(scope());
-        for (i, base_path) in model_paths.iter().enumerate() {
-            app = app.service(Files::new(format!("/model_{}", i).as_str(), base_path));
+            .service(web::scope("").configure(api::scope_config));
+        for (label, base_path) in model_paths.iter() {
+            app = app.service(Files::new(format!("/base_{}", label).as_str(), base_path));
         }
         app
     })
@@ -117,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn scope() -> Scope {
-    web::scope("/api") // URL starts with '/api'
-        .configure(rest_api::scope_config)
+    web::scope("/api")
+        .configure(api::scope_config)
         .configure(ui::scope_config)
 }

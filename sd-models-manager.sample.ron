@@ -1,9 +1,10 @@
 (
     listen_addr: "0.0.0.0",
-    listen_port: 9696,
-    model_paths: [
-        "/home/trungdt/Projects/Rust/sd-models-manager",
-    ],
+    listen_port: 19696,
+    walkdir_parallel: 8,
+    model_paths: {
+        "collection1": "/home/trungdt/Projects/Rust/sd-models-manager",
+    },
     extensions: [
         "safetensors",
         "ckpt",

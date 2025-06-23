@@ -19,7 +19,7 @@ serde_json = "1.0"
 #xz2 = { version = "0.1", features = ["tokio"] }
 #infer = "0.19"
 tokio = { version = "1.45", features = ["rt-multi-thread", "macros"] }
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "time"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "time", "sqlite"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tera = "1.20"
@@ -27,14 +27,14 @@ jwalk = "0.8"
 sha2 = "0.11.0-pre.5"
 hex = "0.4"
 reqwest = { version = "0.12", features = ["blocking", "json"] }
-
+dotenvy = "0.15"
+infer = "0.19"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.6"
 
 [features]
-default = ["sqlite"]
-sqlite = ["sqlx/sqlite"]
+default = []
 
 # Compile-time verified queries do quite a bit of work at compile time.
 # Incremental actions like cargo check and cargo build can be significantly faster when using an optimized build

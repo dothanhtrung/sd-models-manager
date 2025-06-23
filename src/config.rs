@@ -2,6 +2,7 @@
 
 use ron::ser::{to_string_pretty, PrettyConfig};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -68,7 +69,7 @@ pub struct Config {
     pub listen_addr: String,
     pub listen_port: u32,
     pub walkdir_parallel: usize,
-    pub model_paths: Vec<String>,
+    pub model_paths: HashMap<String, String>,
     pub extensions: Vec<String>,
     pub db: DBConfig,
     pub api: APIConfig,
@@ -81,14 +82,13 @@ impl Default for Config {
             listen_addr: DEFAULT_LISTEN_ADDR.to_string(),
             listen_port: DEFAULT_LISTEN_PORT,
             walkdir_parallel: 8,
-            model_paths: vec!["/workspace/models".to_string()],
+            model_paths: HashMap::from([("collection1".to_string(), "/workspace/models".to_string())]),
             extensions: vec![
                 "safetensors".to_string(),
                 "ckpt".to_string(),
                 "gguf".to_string(),
                 "pt".to_string(),
                 "pth".to_string(),
-                "bin".to_string(),
             ],
             db: DBConfig::default(),
             api: APIConfig::default(),
