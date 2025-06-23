@@ -23,27 +23,14 @@ create table item
     path       TEXT                 not null,
     base_id    integer              not null
         constraint item_base_id_fk
-            references base,
+            references base
+            on delete cascade,
     hash       TEXT,
     is_checked integer default true not null,
     parent     integer
         constraint item_item_id_fk
             references item
-);
-
-create table sqlite_master
-(
-    type     TEXT,
-    name     TEXT,
-    tbl_name TEXT,
-    rootpage INT,
-    sql      TEXT
-);
-
-create table sqlite_sequence
-(
-    name,
-    seq
+            on delete cascade
 );
 
 create table tag

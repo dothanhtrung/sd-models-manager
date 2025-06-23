@@ -1,8 +1,21 @@
 use sqlx::sqlite::SqliteQueryResult;
 use sqlx::SqlitePool;
 
+pub struct BasePath{
+    pub id : i64,
+    pub label : String,
+}
+
 pub async fn mark_all_not_check(pool: &SqlitePool) -> Result<SqliteQueryResult, sqlx::Error> {
-    sqlx::query!(r#"UPDATE base SET is_checked=false"#).execute(pool).await
+    sqlx::query!(r#"UPDATE base SET is_checked = false"#).execute(pool).await
+}
+
+pub async fn get(pool: &SqlitePool, id: i64) -> Result<BasePath, sqlx::Error> {
+    sqlx::query_as!(BasePath, "SELECT id, label FROM base WHERE id = ? AND is_checked = true", id).fetch_one(pool).await
+}
+
+pub async fn get_all(pool: &SqlitePool ) -> Result<Vec<BasePath>, sqlx::Error> {
+    sqlx::query_as!(BasePath, "SELECT id, label FROM base WHERE is_checked = true").fetch_all(pool).await
 }
 
 pub async fn find_or_create(pool: &SqlitePool, label: &str) -> Result<i64, sqlx::Error> {
@@ -15,7 +28,7 @@ pub async fn find_or_create(pool: &SqlitePool, label: &str) -> Result<i64, sqlx:
             .await?;
         Ok(id)
     } else {
-        let id = sqlx::query!(r#"INSERT INTO base (label) VALUES (?) "#, label)
+        let id = sqlx::query!(r#"INSERT INTO base (label) VALUES (?)"#, label)
             .execute(pool)
             .await?
             .last_insert_rowid();

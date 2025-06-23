@@ -1,15 +1,18 @@
 //! Copyright (c) 2025 Trung Do <dothanhtrung@pm.me>.
 
-use crate::civitai::{calculate_autov2_hash, update_model_info};
+use crate::civitai::{calculate_autov2_hash, update_model_info, PREVIEW_EXT};
 use crate::config::Config;
-use crate::db::base::find_or_create;
+use crate::db::base::{find_or_create, BasePath};
 use crate::db::item::update_or_insert;
 use crate::db::{base, item, DBPool};
-use actix_web::web::Data;
+use crate::BASE_PATH_PREFIX;
+use actix_web::web::{Data, Query};
 use actix_web::{get, web, Responder};
 use jwalk::{Parallelism, WalkDir};
 use serde::{Deserialize, Serialize};
+use sqlx::Error;
 use std::collections::HashSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::error;
 
@@ -23,23 +26,10 @@ pub fn scope_config(cfg: &mut web::ServiceConfig) {
     );
 }
 
-#[derive(Deserialize)]
-struct GetRequest {
-    path: String,
-    base_id: i64,
-    page: Option<usize>,
-}
-
-#[derive(Serialize)]
-struct ModelInfo {
-    path: String,
-    real_path: String,
-    info: String,
-}
-
 #[derive(Serialize)]
 struct GetResponse {
-    files: Vec<ModelInfo>,
+    items: Vec<ModelInfo>,
+    err: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -53,9 +43,92 @@ struct CleanResponse {
     deleted_base_paths: u64, // Number of non-existence base path deleted
 }
 
+#[derive(Deserialize)]
+struct GetRequest {
+    folder: Option<i64>,
+    page: Option<i64>,
+    count: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct ModelInfo {
+    id: i64,
+    name: String,
+    info: String,
+    preview: String,
+}
+
 #[get("get")]
-async fn get(config: Data<Config>, db_pool: Data<DBPool>) -> impl Responder {
-    web::Json("{\"msg\": \"hello\"")
+async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<GetRequest>) -> impl Responder {
+    let page = query_params.page.unwrap_or(0);
+    let limit = query_params.count.unwrap_or(config.count);
+    let offset = page * limit;
+    let mut ret = Vec::new();
+    let mut err = None;
+    let mut base_path = PathBuf::new();
+
+    if let Some(folder) = query_params.folder {
+        match item::get(&db_pool.sqlite_pool, folder, limit, offset).await {
+            Ok(items) => {
+                for item in items {
+                    let model_path = base_path.join(&item.path);
+                    let name = model_path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_str()
+                        .unwrap_or_default()
+                        .to_string();
+
+                    let mut info_path = model_path.clone();
+                    info_path.set_extension("json");
+                    let info = fs::read_to_string(info_path).unwrap_or_default();
+
+                    let mut preview_path = model_path.clone();
+                    preview_path.set_extension(PREVIEW_EXT);
+                    let label = match base::get(&db_pool.sqlite_pool, item.base_id).await {
+                        Ok(base) => base.label,
+                        Err(e) => {
+                            err = Some(format!("{}", e));
+                            String::new()
+                        }
+                    };
+                    let preview = PathBuf::from(format!("/{}{}", BASE_PATH_PREFIX, label));
+                    let preview = preview.join(preview_path).to_str().unwrap_or_default().to_string();
+
+                    ret.push(ModelInfo {
+                        id: item.id,
+                        name,
+                        info,
+                        preview,
+                    })
+                }
+            }
+            Err(e) => err = Some(format!("{}", e)),
+        }
+    } else {
+        match item::get_root(&db_pool.sqlite_pool, limit, offset).await {
+            Ok(items) => {
+                for item in items {
+                    let model_path = PathBuf::from(&item.path);
+                    let name = model_path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_str()
+                        .unwrap_or_default()
+                        .to_string();
+                    ret.push(ModelInfo {
+                        id: item.id,
+                        name,
+                        info: String::new(),
+                        preview: String::new(),
+                    })
+                }
+            }
+            Err(e) => err = Some(format!("{}", e)),
+        }
+    }
+
+    web::Json(GetResponse { items: ret, err })
 }
 
 #[get("reload_from_disk")]

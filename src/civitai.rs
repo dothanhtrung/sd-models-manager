@@ -50,7 +50,6 @@ pub async fn update_model_info(config: &Config) -> anyhow::Result<()> {
                     match get_model_info(&path, &client, &headers).await {
                         Ok(info) => {
                             if let Err(e) = save_info(
-                                file_ext,
                                 &path,
                                 &info,
                                 config.civitai.overwrite_thumbnail,
@@ -81,7 +80,6 @@ async fn get_model_info(path: &PathBuf, client: &Client, headers: &HeaderMap) ->
 }
 
 async fn save_info(
-    ext: &str,
     filepath: &PathBuf,
     mode_info: &Value,
     overwrite_thumbnail: bool,
@@ -114,18 +112,18 @@ async fn save_info(
                 if image_path.exists() && !overwrite_thumbnail {
                     info!("File already exists: {}", image_path.display());
                     return Ok(());
+                } else {
+                    let response = client.get(url).headers(headers.clone()).send().await?.bytes().await?;
+                    let mut content = response.as_ref();
+                    let mut file = File::create(image_path)?;
+                    std::io::copy(&mut content, &mut file)?;
                 }
-
-                let response = client.get(url).headers(headers.clone()).send().await?.bytes().await?;
-                let mut content = response.as_ref();
-                let mut file = File::create(image_path)?;
-                std::io::copy(&mut content, &mut file)?;
 
                 let file_type = file_type(image_path.to_str().unwrap_or_default());
                 if file_type == FileType::Video {
-                    generate_video_thumbnail(&preview_file)?;
+                    generate_video_thumbnail(&preview_file, overwrite_thumbnail)?;
                 } else if file_type == FileType::Image {
-                    //  Change extension to jpeg for easier to manage
+                    //  Change preview image extension to jpeg for easier to manage
                     if image_path.extension().unwrap_or_default() != PREVIEW_EXT {
                         let mut new_name = preview_file.clone();
                         new_name.set_extension(PREVIEW_EXT);
@@ -157,9 +155,12 @@ pub(crate) fn calculate_autov2_hash(file_path: &PathBuf) -> std::io::Result<Stri
     Ok(hex::encode(result)[..10].to_string())
 }
 
-fn generate_video_thumbnail(file_path: &PathBuf) -> anyhow::Result<()> {
+fn generate_video_thumbnail(file_path: &PathBuf, overwrite: bool) -> anyhow::Result<()> {
     let mut thumbnail_path = file_path.clone();
     thumbnail_path.set_extension("jpeg");
+    if !overwrite && thumbnail_path.exists() {
+        return Ok(());
+    }
 
     Command::new("ffmpeg")
         .args([

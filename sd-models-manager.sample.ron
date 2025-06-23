@@ -1,9 +1,9 @@
 (
     listen_addr: "0.0.0.0",
-    listen_port: 19696,
+    listen_port: 9696,
     walkdir_parallel: 8,
     model_paths: {
-        "collection1": "/home/trungdt/Projects/Rust/sd-models-manager",
+        "collection1": "/home/kimtinh/Projects/Rust/sd-models-manager",
     },
     extensions: [
         "safetensors",
@@ -26,4 +26,5 @@
         overwrite_thumbnail: false,
         save_json: false,
     ),
+    count: 20,
 )

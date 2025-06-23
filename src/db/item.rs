@@ -2,8 +2,19 @@ use sqlx::sqlite::SqliteQueryResult;
 use sqlx::SqlitePool;
 use std::path::PathBuf;
 
+pub struct Item {
+    pub id: i64,
+    pub path: String,
+    pub base_id: i64,
+    pub hash: Option<String>,
+    pub is_checked: i64,
+    pub parent: Option<i64>,
+}
+
 pub async fn mark_all_not_check(pool: &SqlitePool) -> Result<SqliteQueryResult, sqlx::Error> {
-    sqlx::query!(r#"UPDATE item SET is_checked=false"#).execute(pool).await
+    sqlx::query!(r#"UPDATE item SET is_checked = false"#)
+        .execute(pool)
+        .await
 }
 
 pub async fn update_or_insert(pool: &SqlitePool, hash: &str, path: &str, base_id: i64) -> Result<(), sqlx::Error> {
@@ -59,4 +70,30 @@ pub async fn clean(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
         .await?
         .rows_affected();
     Ok(count)
+}
+
+pub async fn get(pool: &SqlitePool, parent: i64, limit: i64, offset: i64) -> Result<Vec<Item>, sqlx::Error> {
+    let items = sqlx::query_as!(
+        Item,
+        r#"SELECT * FROM item WHERE parent = ? AND is_checked = true ORDER BY id LIMIT ? OFFSET ?"#,
+        parent,
+        limit,
+        offset
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(items)
+}
+
+pub async fn get_root(pool: &SqlitePool, limit: i64, offset: i64) -> Result<Vec<Item>, sqlx::Error> {
+    let items = sqlx::query_as!(
+        Item,
+        r#"SELECT * FROM item WHERE path = "" AND is_checked = true ORDER BY id LIMIT ? OFFSET ?"#,
+        limit,
+        offset
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(items)
 }

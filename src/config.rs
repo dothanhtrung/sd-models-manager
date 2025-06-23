@@ -74,6 +74,7 @@ pub struct Config {
     pub db: DBConfig,
     pub api: APIConfig,
     pub civitai: CivitaiConfig,
+    pub count: i64, // number of items return for one page
 }
 
 impl Default for Config {
@@ -93,6 +94,7 @@ impl Default for Config {
             db: DBConfig::default(),
             api: APIConfig::default(),
             civitai: CivitaiConfig::default(),
+            count: 20,
         }
     }
 }

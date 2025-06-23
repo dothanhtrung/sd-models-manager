@@ -13,6 +13,7 @@ mod config;
 mod db;
 mod ui;
 
+use crate::api::{get, reload_from_disk};
 use crate::civitai::update_model_info;
 use crate::config::Config;
 use crate::db::DBPool;
@@ -28,7 +29,8 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tracing::{error, warn};
 use tracing_subscriber::EnvFilter;
-use crate::api::{get, reload_from_disk};
+
+const BASE_PATH_PREFIX: &str = "base_";
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -102,13 +104,16 @@ async fn main() -> anyhow::Result<()> {
     let ref_config = Arc::new(config);
 
     HttpServer::new(move || {
-         let mut app = App::new()
+        let mut app = App::new()
             .app_data(Data::from(ref_db_pool.clone()))
             .app_data(Data::from(ref_config.clone()))
             .wrap(middleware::NormalizePath::trim())
             .service(web::scope("").configure(api::scope_config));
         for (label, base_path) in model_paths.iter() {
-            app = app.service(Files::new(format!("/base_{}", label).as_str(), base_path));
+            app = app.service(Files::new(
+                format!("/{}{}", BASE_PATH_PREFIX, label).as_str(),
+                base_path,
+            ));
         }
         app
     })
