@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="/css/tailwind_output.css" rel="stylesheet">
+
+    <title>Stable Diffusion Models Manager</title>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+
+<div class="container mx-auto px-4 py-6">
+    <h1 class="text-3xl font-bold mb-6">Stable Diffusion Models Manager</h1>
+
+    <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <!-- Cards will be inserted here -->
+    </div>
+</div>
+
+<script>
+    async function fetchModels() {
+        try {
+            const query = window.location.search; // e.g., "?folder=1&page=2" or ""
+
+            // Use relative path so it works regardless of domain/port
+            const apiUrl = `/api/get${query}`;
+
+            const res = await fetch(apiUrl);
+            const data = await res.json();
+
+            const items = data.items;
+            if (!Array.isArray(items)) throw new Error("Expected `items` to be an array");
+
+            const grid = document.getElementById("grid");
+
+            items.forEach(model => {
+                const card = document.createElement("a");
+                card.href = model.is_dir ? `/?folder=${model.id}` : `/item/${model.id}`;
+                card.className = "block bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow";
+
+                card.innerHTML = `
+                  <img src="${model.preview}" alt="${model.name}" class="w-full h-48 object-cover">
+                  <div class="p-4">
+                    <h2 class="text-lg font-semibold">${model.name}</h2>
+                  </div>
+                `;
+
+                grid.appendChild(card);
+            });
+        } catch (err) {
+            document.getElementById("grid").innerHTML = `<p class="text-red-600">Failed to load models.</p>`;
+            console.error(err);
+        }
+    }
+
+    fetchModels();
+</script>
+
+</body>
+</html>

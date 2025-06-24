@@ -2,7 +2,7 @@
 
 use crate::civitai::{calculate_autov2_hash, update_model_info, PREVIEW_EXT};
 use crate::config::Config;
-use crate::db::base::{find_or_create, BasePath};
+use crate::db::base::find_or_create;
 use crate::db::item::update_or_insert;
 use crate::db::{base, item, DBPool};
 use crate::BASE_PATH_PREFIX;
@@ -10,10 +10,9 @@ use actix_web::web::{Data, Query};
 use actix_web::{get, web, Responder};
 use jwalk::{Parallelism, WalkDir};
 use serde::{Deserialize, Serialize};
-use sqlx::Error;
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tracing::error;
 
 pub fn scope_config(cfg: &mut web::ServiceConfig) {
@@ -44,10 +43,10 @@ struct CleanResponse {
 }
 
 #[derive(Deserialize)]
-struct GetRequest {
-    folder: Option<i64>,
-    page: Option<i64>,
-    count: Option<i64>,
+pub struct GetRequest {
+    pub folder: Option<i64>,
+    pub page: Option<i64>,
+    pub count: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -56,6 +55,7 @@ struct ModelInfo {
     name: String,
     info: String,
     preview: String,
+    is_dir: bool,
 }
 
 #[get("get")]
@@ -65,9 +65,23 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
     let offset = page * limit;
     let mut ret = Vec::new();
     let mut err = None;
-    let mut base_path = PathBuf::new();
-
     if let Some(folder) = query_params.folder {
+        let Ok(base_label) = item::get_label(&db_pool.sqlite_pool, folder).await else {
+            return web::Json(GetResponse {
+                items: ret,
+                err: Some("Cannot find model path".to_string()),
+            });
+        };
+
+        let Some(base_path) = config.model_paths.get(&base_label) else {
+            return web::Json(GetResponse {
+                items: ret,
+                err: Some("Unknown model path for folder".to_string()),
+            });
+        };
+
+        let base_path = PathBuf::from(base_path);
+
         match item::get(&db_pool.sqlite_pool, folder, limit, offset).await {
             Ok(items) => {
                 for item in items {
@@ -79,27 +93,29 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
                         .unwrap_or_default()
                         .to_string();
 
-                    let mut info_path = model_path.clone();
-                    info_path.set_extension("json");
-                    let info = fs::read_to_string(info_path).unwrap_or_default();
+                    let mut info = String::new();
+                    let mut preview = String::from("/assets/folder.png");
+                    let mut is_dir = false;
 
-                    let mut preview_path = model_path.clone();
-                    preview_path.set_extension(PREVIEW_EXT);
-                    let label = match base::get(&db_pool.sqlite_pool, item.base_id).await {
-                        Ok(base) => base.label,
-                        Err(e) => {
-                            err = Some(format!("{}", e));
-                            String::new()
-                        }
-                    };
-                    let preview = PathBuf::from(format!("/{}{}", BASE_PATH_PREFIX, label));
-                    let preview = preview.join(preview_path).to_str().unwrap_or_default().to_string();
+                    if model_path.is_dir() {
+                        is_dir = true;
+                    } else {
+                        let mut info_path = model_path.clone();
+                        info_path.set_extension("json");
+                        info = fs::read_to_string(info_path).unwrap_or_default();
+
+                        let preview_path = PathBuf::from(format!("/{}{}", BASE_PATH_PREFIX, base_label));
+                        let mut preview_path = preview_path.join(item.path);
+                        preview_path.set_extension(PREVIEW_EXT);
+                        preview = preview_path.to_str().unwrap_or_default().to_string();
+                    }
 
                     ret.push(ModelInfo {
                         id: item.id,
                         name,
                         info,
                         preview,
+                        is_dir,
                     })
                 }
             }
@@ -121,6 +137,7 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
                         name,
                         info: String::new(),
                         preview: String::new(),
+                        is_dir: true,
                     })
                 }
             }

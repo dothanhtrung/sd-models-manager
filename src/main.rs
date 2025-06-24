@@ -17,6 +17,7 @@ use crate::api::{get, reload_from_disk};
 use crate::civitai::update_model_info;
 use crate::config::Config;
 use crate::db::DBPool;
+use actix_cors::Cors;
 use actix_files::Files;
 use actix_web::web::Data;
 use actix_web::{middleware, web, App, HttpServer, Scope};
@@ -27,7 +28,7 @@ use std::time::Duration;
 use tera::Tera;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 const BASE_PATH_PREFIX: &str = "base_";
@@ -105,16 +106,18 @@ async fn main() -> anyhow::Result<()> {
 
     HttpServer::new(move || {
         let mut app = App::new()
+            .wrap(Cors::default().allow_any_origin())
             .app_data(Data::from(ref_db_pool.clone()))
             .app_data(Data::from(ref_config.clone()))
-            .wrap(middleware::NormalizePath::trim())
-            .service(web::scope("").configure(api::scope_config));
+            .wrap(middleware::NormalizePath::trim());
         for (label, base_path) in model_paths.iter() {
-            app = app.service(Files::new(
-                format!("/{}{}", BASE_PATH_PREFIX, label).as_str(),
-                base_path,
-            ));
+            info!("Register path {}{} to {}", BASE_PATH_PREFIX, label, base_path);
+            app = app.service(
+                Files::new(format!("/{}{}", BASE_PATH_PREFIX, label).as_str(), base_path).show_files_listing(),
+            );
         }
+
+        app = app.service(web::scope("").configure(api::scope_config).configure(ui::scope_config));
         app
     })
     .bind(listen_addr)?
@@ -122,10 +125,4 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     Ok(())
-}
-
-fn scope() -> Scope {
-    web::scope("/api")
-        .configure(api::scope_config)
-        .configure(ui::scope_config)
 }

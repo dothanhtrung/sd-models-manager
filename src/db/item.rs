@@ -89,11 +89,15 @@ pub async fn get(pool: &SqlitePool, parent: i64, limit: i64, offset: i64) -> Res
 pub async fn get_root(pool: &SqlitePool, limit: i64, offset: i64) -> Result<Vec<Item>, sqlx::Error> {
     let items = sqlx::query_as!(
         Item,
-        r#"SELECT * FROM item WHERE path = "" AND is_checked = true ORDER BY id LIMIT ? OFFSET ?"#,
+        r#"SELECT * FROM item WHERE path = '' AND is_checked = true ORDER BY id LIMIT ? OFFSET ?"#,
         limit,
         offset
     )
     .fetch_all(pool)
     .await?;
     Ok(items)
+}
+
+pub async fn get_label(pool: &SqlitePool, id: i64) -> Result<String, sqlx::Error> {
+    sqlx::query_scalar!(r#"SELECT label FROM base LEFT JOIN item ON base.id = item.base_id WHERE item.id = ?"#, id).fetch_one(pool).await
 }
