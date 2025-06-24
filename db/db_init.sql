@@ -30,7 +30,8 @@ create table item
     parent     integer
         constraint item_item_id_fk
             references item
-            on delete cascade
+            on delete cascade,
+    name       TEXT
 );
 
 create table tag
@@ -61,5 +62,4 @@ create table tag_item
 
 create unique index tag_item_item_tag_uindex
     on tag_item (item, tag);
-
 
