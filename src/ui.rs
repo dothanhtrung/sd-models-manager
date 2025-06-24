@@ -5,7 +5,6 @@ use actix_web::web::Data;
 use actix_web::{error, get, web, HttpResponse, Responder};
 use serde::Deserialize;
 use tera::Tera;
-use crate::api::GetRequest;
 
 pub fn scope_config(cfg: &mut web::ServiceConfig) {
     let tera = Tera::new(concat!(env!("CARGO_MANIFEST_DIR"), "/res/html/**/*")).unwrap();
@@ -17,9 +16,8 @@ pub fn scope_config(cfg: &mut web::ServiceConfig) {
 }
 
 #[get("")]
-async fn index(tmpl: Data<Tera>, query: web::Query<GetRequest>) -> impl Responder {
+async fn index(tmpl: Data<Tera>) -> impl Responder {
     let mut ctx = tera::Context::new();
-    ctx.insert("page", &query.page);
     let template = tmpl
         .render("index.html", &ctx)
         .map_err(|e| error::ErrorInternalServerError(format!("Template error: {:?}", e)))

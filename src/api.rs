@@ -7,7 +7,7 @@ use crate::db::item::update_or_insert;
 use crate::db::{base, item, DBPool};
 use crate::BASE_PATH_PREFIX;
 use actix_web::web::{Data, Query};
-use actix_web::{get, web, Responder};
+use actix_web::{get, rt, web, Responder};
 use jwalk::{Parallelism, WalkDir};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -43,7 +43,7 @@ struct CleanResponse {
 }
 
 #[derive(Deserialize)]
-pub struct GetRequest {
+ struct GetRequest {
     pub folder: Option<i64>,
     pub page: Option<i64>,
     pub count: Option<i64>,
@@ -56,6 +56,10 @@ struct ModelInfo {
     info: String,
     preview: String,
     is_dir: bool,
+}
+
+struct DeleteRequest {
+    id: Vec<i64>,
 }
 
 #[get("get")]
@@ -191,6 +195,17 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
                         count += 1;
                     }
                 }
+            } else {
+                // let path = entry.path();
+                // let Ok(relative_path) = get_relative_path(base_path, &path) else {
+                //     continue;
+                // };
+                // if let Err(e) = update_or_insert(&db_pool.sqlite_pool, "", &relative_path, base_id).await
+                // {
+                //     error!("Failed to insert item: {}", e);
+                // } else {
+                //     count += 1;
+                // }
             }
         }
     }
@@ -211,9 +226,13 @@ async fn clean(db_pool: Data<DBPool>) -> impl Responder {
 
 #[get("sync_civitai")]
 async fn sync_civitai(config: Data<Config>) -> impl Responder {
-    let _ = update_model_info(&**config).await;
+    let config = (**config).clone();
+    rt::spawn(async { update_model_info(config).await });
     web::Json("")
 }
+
+// #[get("delete")]
+// async fn delete(config: Data<Config>, db_pool: Data<DBPool>) -> impl Responder {}
 
 fn get_relative_path(base_path: &str, path: &PathBuf) -> Result<String, anyhow::Error> {
     let base = PathBuf::from(base_path);

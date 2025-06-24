@@ -44,14 +44,14 @@ pub async fn update_or_insert(pool: &SqlitePool, hash: &str, path: &str, base_id
         sqlx::query!(
             r#"UPDATE item SET hash = ?, is_checked=true, parent = ? WHERE id = ?"#,
             hash,
+            parent_id,
             id,
-            parent_id
         )
         .execute(pool)
         .await?;
     } else {
         sqlx::query!(
-            r#"INSERT INTO item (hash, path, base_id,  parent) VALUES (?, ?, ?,  ?) "#,
+            r#"INSERT INTO item (hash, path, base_id, parent) VALUES (?, ?, ?,  ?) "#,
             hash,
             path,
             base_id,

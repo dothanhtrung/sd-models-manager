@@ -4,28 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="/css/tailwind_output.css" rel="stylesheet">
-
     <title>Stable Diffusion Models Manager</title>
 </head>
 <body class="bg-gray-100 text-gray-800">
 
-
 <div class="container mx-auto px-4 py-6">
-    <h1 class="text-3xl font-bold mb-6">Stable Diffusion Models Manager</h1>
+    <div class="flex flex-wrap items-center justify-between mb-6 gap-2">
+        <h1 class="text-3xl font-bold">Stable Diffusion Models Manager</h1>
+        <div class="space-x-2">
+            <button
+                    id="reloadBtn"
+                    class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                🔁 Reload from Disk
+            </button>
+            <button
+                    id="syncBtn"
+                    class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                🔗 Sync from Civitai
+            </button>
+        </div>
+    </div>
 
     <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         <!-- Cards will be inserted here -->
     </div>
 </div>
 
+<!-- Corner Loading Spinner -->
+<div id="loadingSpinner" class="fixed top-4 right-4 z-50 hidden">
+    <div class="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+</div>
+
 <script>
     async function fetchModels() {
         try {
-            const query = window.location.search; // e.g., "?folder=1&page=2" or ""
-
-            // Use relative path so it works regardless of domain/port
+            const query = window.location.search;
             const apiUrl = `/api/get${query}`;
-
             const res = await fetch(apiUrl);
             const data = await res.json();
 
@@ -33,17 +47,21 @@
             if (!Array.isArray(items)) throw new Error("Expected `items` to be an array");
 
             const grid = document.getElementById("grid");
+            grid.innerHTML = "";
 
             items.forEach(model => {
-                const card = document.createElement("a");
-                card.href = model.is_dir ? `/?folder=${model.id}` : `/item/${model.id}`;
-                card.className = "block bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow";
+                const card = document.createElement("div");
+                const href = model.is_dir ? `/?folder=${model.id}` : `/item/${model.id}`;
+                card.className = "relative bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow";
+
 
                 card.innerHTML = `
-                  <img src="${model.preview}" alt="${model.name}" class="w-full h-48 object-cover">
+                    <a href="${href}" class="block">
+                  <img src="${model.preview}" alt="${model.name}" class="w-full h-48 object-cover bg-gray-100">
                   <div class="p-4">
-                    <h2 class="text-lg font-semibold">${model.name}</h2>
+                    <h2 class="text-lg font-semibold truncate">${model.name}</h2>
                   </div>
+                  </a>
                 `;
 
                 grid.appendChild(card);
@@ -56,6 +74,34 @@
 
     fetchModels();
 </script>
+
+<script>
+    function showLoading(show) {
+        const spinner = document.getElementById("loadingSpinner");
+        spinner.classList.toggle("hidden", !show);
+    }
+
+    async function callAndRefresh(endpoint) {
+        try {
+            showLoading(true);
+            await fetch(endpoint); // GET request
+            await fetchModels();   // Refresh grid
+        } catch (err) {
+            console.error(`Failed to call ${endpoint}`, err);
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    document.getElementById("reloadBtn").addEventListener("click", () => {
+        callAndRefresh("/api/reload_from_disk");
+    });
+
+    document.getElementById("syncBtn").addEventListener("click", () => {
+        callAndRefresh("/api/sync_civitai");
+    });
+</script>
+
 
 </body>
 </html>

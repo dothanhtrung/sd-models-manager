@@ -78,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     if args.update_model_info {
-        update_model_info(&config).await?;
+        update_model_info(config.clone()).await?;
         return Ok(());
     }
 
@@ -111,7 +111,6 @@ async fn main() -> anyhow::Result<()> {
             .app_data(Data::from(ref_config.clone()))
             .wrap(middleware::NormalizePath::trim());
         for (label, base_path) in model_paths.iter() {
-            info!("Register path {}{} to {}", BASE_PATH_PREFIX, label, base_path);
             app = app.service(
                 Files::new(format!("/{}{}", BASE_PATH_PREFIX, label).as_str(), base_path).show_files_listing(),
             );

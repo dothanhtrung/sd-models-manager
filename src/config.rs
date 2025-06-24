@@ -16,7 +16,7 @@ const DEFAULT_SQLITE_PATH: &str = "db/sd-models-manager.sqlite";
 
 const DEFAULT_API_PER_PAGE: u64 = 20;
 
-#[derive(Deserialize, Debug, Serialize)]
+#[derive(Deserialize, Debug, Serialize, Clone)]
 pub struct SQLiteConfig {
     pub db_path: String,
 }
@@ -29,7 +29,7 @@ impl Default for SQLiteConfig {
     }
 }
 
-#[derive(Deserialize, Debug, Serialize)]
+#[derive(Deserialize, Debug, Serialize, Clone)]
 pub struct DBConfig {
     pub init_timeout_secs: u64,
     pub sqlite: SQLiteConfig,
@@ -57,14 +57,14 @@ impl Default for APIConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct CivitaiConfig {
     pub api_key: String,
     pub overwrite_thumbnail: bool,
     pub save_json: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
     pub listen_addr: String,
     pub listen_port: u32,
