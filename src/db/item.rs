@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 pub struct Item {
     pub id: i64,
+    pub name: Option<String>,
     pub path: String,
     pub base_id: i64,
     pub hash: Option<String>,
@@ -17,7 +18,12 @@ pub async fn mark_all_not_check(pool: &SqlitePool) -> Result<SqliteQueryResult, 
         .await
 }
 
-pub async fn update_or_insert(pool: &SqlitePool, hash: &str, path: &str, base_id: i64) -> Result<(), sqlx::Error> {
+pub async fn update_or_insert(
+    pool: &SqlitePool,
+    name: Option<&str>,
+    path: &str,
+    base_id: i64,
+) -> Result<(), sqlx::Error> {
     let pathbuf = PathBuf::from(path);
     let mut parent_id = 0;
     if let Some(parent) = pathbuf.parent() {
@@ -29,7 +35,8 @@ pub async fn update_or_insert(pool: &SqlitePool, hash: &str, path: &str, base_id
             {
                 parent_id = id;
             } else {
-                parent_id = sqlx::query!(r#"INSERT INTO item (path, base_id) VALUES (?, ?)"#, parent, base_id)
+                let name = name.unwrap_or_default();
+                parent_id = sqlx::query!(r#"INSERT INTO item ( path, base_id) VALUES (?, ?)"#, parent, base_id)
                     .execute(pool)
                     .await?
                     .last_insert_rowid();
@@ -42,20 +49,28 @@ pub async fn update_or_insert(pool: &SqlitePool, hash: &str, path: &str, base_id
         .await
     {
         sqlx::query!(
-            r#"UPDATE item SET hash = ?, is_checked=true, parent = ? WHERE id = ?"#,
-            hash,
+            r#"UPDATE item SET is_checked=true, parent = ? WHERE id = ?"#,
             parent_id,
             id,
         )
         .execute(pool)
         .await?;
-    } else {
+    } else if parent_id != 0 {
         sqlx::query!(
-            r#"INSERT INTO item (hash, path, base_id, parent) VALUES (?, ?, ?,  ?) "#,
-            hash,
+            r#"INSERT INTO item (name, path, base_id, parent) VALUES (?, ?, ?, ?) "#,
+            name,
             path,
             base_id,
             parent_id
+        )
+        .execute(pool)
+        .await?;
+    } else {
+        sqlx::query!(
+            r#"INSERT INTO item (name, path, base_id) VALUES (?, ?,  ?) "#,
+            name,
+            path,
+            base_id,
         )
         .execute(pool)
         .await?;
@@ -72,7 +87,7 @@ pub async fn clean(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
     Ok(count)
 }
 
-pub async fn get(pool: &SqlitePool, parent: i64, limit: i64, offset: i64) -> Result<Vec<Item>, sqlx::Error> {
+pub async fn get(pool: &SqlitePool, parent: i64, limit: i64, offset: i64) -> Result<(Vec<Item>, i64), sqlx::Error> {
     let items = sqlx::query_as!(
         Item,
         r#"SELECT * FROM item WHERE parent = ? AND is_checked = true ORDER BY id LIMIT ? OFFSET ?"#,
@@ -83,10 +98,17 @@ pub async fn get(pool: &SqlitePool, parent: i64, limit: i64, offset: i64) -> Res
     .fetch_all(pool)
     .await?;
 
-    Ok(items)
+    let total = sqlx::query_scalar!(
+        "SELECT count(id) FROM item WHERE parent = ? AND is_checked = true",
+        parent
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok((items, total))
 }
 
-pub async fn get_root(pool: &SqlitePool, limit: i64, offset: i64) -> Result<Vec<Item>, sqlx::Error> {
+pub async fn get_root(pool: &SqlitePool, limit: i64, offset: i64) -> Result<(Vec<Item>, i64), sqlx::Error> {
     let items = sqlx::query_as!(
         Item,
         r#"SELECT * FROM item WHERE path = '' AND is_checked = true ORDER BY id LIMIT ? OFFSET ?"#,
@@ -95,9 +117,19 @@ pub async fn get_root(pool: &SqlitePool, limit: i64, offset: i64) -> Result<Vec<
     )
     .fetch_all(pool)
     .await?;
-    Ok(items)
+
+    let total = sqlx::query_scalar!(r#"SELECT count(id) FROM item WHERE path = '' AND is_checked = true"#,)
+        .fetch_one(pool)
+        .await?;
+
+    Ok((items, total))
 }
 
 pub async fn get_label(pool: &SqlitePool, id: i64) -> Result<String, sqlx::Error> {
-    sqlx::query_scalar!(r#"SELECT label FROM base LEFT JOIN item ON base.id = item.base_id WHERE item.id = ?"#, id).fetch_one(pool).await
+    sqlx::query_scalar!(
+        r#"SELECT label FROM base LEFT JOIN item ON base.id = item.base_id WHERE item.id = ?"#,
+        id
+    )
+    .fetch_one(pool)
+    .await
 }

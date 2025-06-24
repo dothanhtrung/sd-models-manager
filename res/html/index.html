@@ -25,17 +25,82 @@
         </div>
     </div>
 
+    <div class="flex justify-start items-center my-4">
+        <div id="paginationTop" class="inline-flex flex-wrap items-center gap-1"></div>
+    </div>
+
     <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         <!-- Cards will be inserted here -->
     </div>
+
+    <div class="flex justify-start items-center my-4">
+        <div id="paginationBottom" class="inline-flex flex-wrap items-center gap-1"></div>
+    </div>
+
+
+    <!-- Corner Loading Spinner -->
+    <div id="loadingSpinner" class="fixed top-4 right-4 z-50 hidden">
+        <div class="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+    </div>
 </div>
 
-<!-- Corner Loading Spinner -->
-<div id="loadingSpinner" class="fixed top-4 right-4 z-50 hidden">
-    <div class="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
-</div>
 
 <script>
+    function renderPagination(currentPage, totalItems, folder, count) {
+        const totalPages = Math.max(1, Math.ceil(totalItems / count));
+        const top = document.getElementById("paginationTop");
+        const bottom = document.getElementById("paginationBottom");
+        top.innerHTML = bottom.innerHTML = "";
+
+        const makeBtn = (label, page, disabled = false, isActive = false) => {
+            const btn = document.createElement("a");
+            btn.textContent = label;
+            btn.href = `/?folder=${folder}&page=${page}&count=${count}`;
+            btn.className =
+                "px-3 py-1 mx-1 rounded text-sm " +
+                (disabled
+                    ? "bg-gray-300 text-gray-500 pointer-events-none"
+                    : isActive
+                        ? "bg-gray-800 text-white font-bold"
+                        : "bg-blue-600 text-white hover:bg-blue-700 transition");
+            return btn;
+        };
+
+        const createPagination = (container) => {
+            container.appendChild(makeBtn("First", 1, currentPage === 1));
+            container.appendChild(makeBtn("Prev", Math.max(1, currentPage - 1), currentPage === 1));
+
+            const range = 2; // how many pages before/after current
+            const start = Math.max(1, currentPage - range);
+            const end = Math.min(totalPages, currentPage + range);
+
+            if (start > 2) {
+                const dots = document.createElement("span");
+                dots.textContent = "...";
+                dots.className = "text-gray-500 px-1";
+                container.appendChild(dots);
+            }
+
+            for (let i = start; i <= end; i++) {
+                container.appendChild(makeBtn(i, i, false, i === currentPage));
+            }
+
+            if (end < totalPages - 1) {
+                const dots = document.createElement("span");
+                dots.textContent = "...";
+                dots.className = "text-gray-500 px-1";
+                container.appendChild(dots);
+            }
+
+            container.appendChild(makeBtn("Next", Math.min(totalPages, currentPage + 1), currentPage === totalPages));
+            container.appendChild(makeBtn("Last", totalPages, currentPage === totalPages));
+        };
+
+        createPagination(top);
+        createPagination(bottom);
+    }
+
+
     async function fetchModels() {
         try {
             const query = window.location.search;
@@ -57,7 +122,7 @@
 
                 card.innerHTML = `
                     <a href="${href}" class="block">
-                  <img src="${model.preview}" alt="${model.name}" class="w-full h-48 object-cover bg-gray-100">
+                  <img src="${model.preview}" alt="${model.name}" class="w-full aspect-w-1 aspect-h-1 object-cover bg-gray-100">
                   <div class="p-4">
                     <h2 class="text-lg font-semibold truncate">${model.name}</h2>
                   </div>
@@ -66,6 +131,13 @@
 
                 grid.appendChild(card);
             });
+
+            const params = new URLSearchParams(window.location.search);
+            const page = parseInt(params.get("page") || "1");
+            const folder = params.get("folder") || "";
+            const count = parseInt(params.get("count") || "20");
+
+            renderPagination(page, data.total, folder, count);
         } catch (err) {
             document.getElementById("grid").innerHTML = `<p class="text-red-600">Failed to load models.</p>`;
             console.error(err);
@@ -73,7 +145,10 @@
     }
 
     fetchModels();
+
+
 </script>
+
 
 <script>
     function showLoading(show) {

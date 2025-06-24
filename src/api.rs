@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
-use tracing::error;
+use tracing::{error, info};
 
 pub fn scope_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -28,6 +28,7 @@ pub fn scope_config(cfg: &mut web::ServiceConfig) {
 #[derive(Serialize)]
 struct GetResponse {
     items: Vec<ModelInfo>,
+    total: i64,
     err: Option<String>,
 }
 
@@ -43,7 +44,7 @@ struct CleanResponse {
 }
 
 #[derive(Deserialize)]
- struct GetRequest {
+struct GetRequest {
     pub folder: Option<i64>,
     pub page: Option<i64>,
     pub count: Option<i64>,
@@ -69,10 +70,13 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
     let offset = page * limit;
     let mut ret = Vec::new();
     let mut err = None;
+    let mut total = 0;
+
     if let Some(folder) = query_params.folder {
         let Ok(base_label) = item::get_label(&db_pool.sqlite_pool, folder).await else {
             return web::Json(GetResponse {
                 items: ret,
+                total: 0,
                 err: Some("Cannot find model path".to_string()),
             });
         };
@@ -80,6 +84,7 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
         let Some(base_path) = config.model_paths.get(&base_label) else {
             return web::Json(GetResponse {
                 items: ret,
+                total: 0,
                 err: Some("Unknown model path for folder".to_string()),
             });
         };
@@ -87,21 +92,16 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
         let base_path = PathBuf::from(base_path);
 
         match item::get(&db_pool.sqlite_pool, folder, limit, offset).await {
-            Ok(items) => {
+            Ok((items, _total)) => {
+                total = _total;
                 for item in items {
                     let model_path = base_path.join(&item.path);
-                    let name = model_path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_str()
-                        .unwrap_or_default()
-                        .to_string();
 
                     let mut info = String::new();
                     let mut preview = String::from("/assets/folder.png");
                     let mut is_dir = false;
 
-                    if model_path.is_dir() {
+                    if model_path.is_dir() || item.path.is_empty() {
                         is_dir = true;
                     } else {
                         let mut info_path = model_path.clone();
@@ -116,7 +116,7 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
 
                     ret.push(ModelInfo {
                         id: item.id,
-                        name,
+                        name: item.name.unwrap_or_default(),
                         info,
                         preview,
                         is_dir,
@@ -127,7 +127,8 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
         }
     } else {
         match item::get_root(&db_pool.sqlite_pool, limit, offset).await {
-            Ok(items) => {
+            Ok((items, _total)) => {
+                total = _total;
                 for item in items {
                     let model_path = PathBuf::from(&item.path);
                     let name = model_path
@@ -140,7 +141,7 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
                         id: item.id,
                         name,
                         info: String::new(),
-                        preview: String::new(),
+                        preview: String::from("/assets/folder.png"),
                         is_dir: true,
                     })
                 }
@@ -149,7 +150,7 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
         }
     }
 
-    web::Json(GetResponse { items: ret, err })
+    web::Json(GetResponse { items: ret, total, err })
 }
 
 #[get("reload_from_disk")]
@@ -180,15 +181,23 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
             .into_iter()
             .flatten()
         {
+            let path = entry.path();
+            let mut name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_str()
+                .unwrap_or_default()
+                .to_string();
+
+            let Ok(relative_path) = get_relative_path(base_path, &path) else {
+                continue;
+            };
+
             if entry.file_type().is_file() || entry.file_type().is_symlink() {
-                let path = entry.path();
-                let Ok(relative_path) = get_relative_path(base_path, &path) else {
-                    continue;
-                };
                 let file_ext = path.extension().unwrap_or_default().to_str().unwrap_or_default();
                 if valid_ext.contains(&file_ext.to_string()) {
-                    let hash = calculate_autov2_hash(&path).unwrap_or_default();
-                    if let Err(e) = update_or_insert(&db_pool.sqlite_pool, hash.as_str(), &relative_path, base_id).await
+                    if let Err(e) =
+                        update_or_insert(&db_pool.sqlite_pool, Some(name.as_str()), &relative_path, base_id).await
                     {
                         error!("Failed to insert item: {}", e);
                     } else {
@@ -196,16 +205,17 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
                     }
                 }
             } else {
-                // let path = entry.path();
-                // let Ok(relative_path) = get_relative_path(base_path, &path) else {
-                //     continue;
-                // };
-                // if let Err(e) = update_or_insert(&db_pool.sqlite_pool, "", &relative_path, base_id).await
-                // {
-                //     error!("Failed to insert item: {}", e);
-                // } else {
-                //     count += 1;
-                // }
+                if relative_path.is_empty() {
+                    name = (*label).clone();
+                }
+                info!("Name: {}", name);
+                if let Err(e) =
+                    update_or_insert(&db_pool.sqlite_pool, Some(name.as_str()), &relative_path, base_id).await
+                {
+                    error!("Failed to insert item: {}", e);
+                } else {
+                    count += 1;
+                }
             }
         }
     }
