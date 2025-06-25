@@ -1,0 +1,20 @@
+<div class="flex justify-center my-6">
+  <form onsubmit="handleSearch(event)" class="w-full max-w-md flex">
+    <input id="searchInput" type="text" placeholder="Search..."
+           class="flex-1 px-4 py-2 border border-gray-800 rounded-l-lg bg-gray-900 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-600" />
+    <button type="submit"
+            class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-r-lg hover:bg-blue-700">
+      Search
+    </button>
+  </form>
+</div>
+
+<script>
+  function handleSearch(event) {
+    event.preventDefault();
+    const query = document.getElementById("searchInput").value.trim();
+    if (query) {
+      window.location.href = `/search?text=${encodeURIComponent(query)}`;
+    }
+  }
+</script>

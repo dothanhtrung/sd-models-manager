@@ -7,11 +7,11 @@ use reqwest::Client;
 use serde_json::{to_string_pretty, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
-use std::fs;
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tokio::fs;
 use tracing::{error, info};
 
 pub const PREVIEW_EXT: &str = "jpeg";
@@ -49,14 +49,8 @@ pub async fn update_model_info(config: Config) -> anyhow::Result<()> {
                     info!("Update model info: {}", entry.path().display());
                     match get_model_info(&path, &client, &headers).await {
                         Ok(info) => {
-                            if let Err(e) = save_info(
-                                &path,
-                                &info,
-                                config.civitai.overwrite_thumbnail,
-                                &client,
-                                &headers,
-                            )
-                            .await
+                            if let Err(e) =
+                                save_info(&path, &info, config.civitai.overwrite_thumbnail, &client, &headers).await
                             {
                                 error!("Failed to save model info: {}", e);
                             }
@@ -71,7 +65,7 @@ pub async fn update_model_info(config: Config) -> anyhow::Result<()> {
 }
 
 async fn get_model_info(path: &PathBuf, client: &Client, headers: &HeaderMap) -> anyhow::Result<Value> {
-    let hash = calculate_autov2_hash(path)?;
+    let hash = calculate_blake3_hash(path)?;
     let url = format!("https://civitai.com/api/v1/model-versions/by-hash/{}", hash);
 
     let response = client.get(url).headers(headers.clone()).send().await?.json().await?;
@@ -119,7 +113,7 @@ async fn save_info(
                     std::io::copy(&mut content, &mut file)?;
                 }
 
-                let file_type = file_type(image_path.to_str().unwrap_or_default());
+                let file_type = file_type(image_path.to_str().unwrap_or_default()).await;
                 if file_type == FileType::Video {
                     generate_video_thumbnail(&preview_file, overwrite_thumbnail)?;
                 } else if file_type == FileType::Image {
@@ -127,7 +121,7 @@ async fn save_info(
                     if image_path.extension().unwrap_or_default() != PREVIEW_EXT {
                         let mut new_name = preview_file.clone();
                         new_name.set_extension(PREVIEW_EXT);
-                        fs::rename(preview_file, new_name)?;
+                        fs::rename(preview_file, new_name).await?;
                     }
                 }
             }
@@ -153,6 +147,24 @@ pub(crate) fn calculate_autov2_hash(file_path: &PathBuf) -> std::io::Result<Stri
 
     let result = hasher.finalize();
     Ok(hex::encode(result)[..10].to_string())
+}
+
+fn calculate_blake3_hash(file_path: &PathBuf) -> std::io::Result<String> {
+    let file = File::open(file_path)?;
+    let mut reader = BufReader::new(file);
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let bytes_read = reader.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+
+    let result = hasher.finalize();
+    Ok(result.to_hex().to_string())
 }
 
 fn generate_video_thumbnail(file_path: &PathBuf, overwrite: bool) -> anyhow::Result<()> {
@@ -182,8 +194,8 @@ fn generate_video_thumbnail(file_path: &PathBuf, overwrite: bool) -> anyhow::Res
     Ok(())
 }
 
-fn file_type(path: &str) -> FileType {
-    let data = fs::read(path).ok().unwrap_or_default();
+async fn file_type(path: &str) -> FileType {
+    let data = fs::read(path).await.ok().unwrap_or_default();
     if let Some(kind) = infer::get(&data) {
         if kind.mime_type().starts_with("video/") {
             return FileType::Video;

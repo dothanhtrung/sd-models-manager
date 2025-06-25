@@ -3,7 +3,7 @@
     listen_port: 9696,
     walkdir_parallel: 8,
     model_paths: {
-        "collection1": "/home/kimtinh/Projects/Rust/sd-models-manager",
+        "collection1": "/workspace/models",
     },
     extensions: [
         "safetensors",

@@ -6,16 +6,33 @@ pub struct Item {
     pub id: i64,
     pub name: Option<String>,
     pub path: String,
-    pub base_id: i64,
-    pub hash: Option<String>,
-    pub is_checked: i64,
-    pub parent: Option<i64>,
 }
 
 pub async fn mark_all_not_check(pool: &SqlitePool) -> Result<SqliteQueryResult, sqlx::Error> {
-    sqlx::query!(r#"UPDATE item SET is_checked = false"#)
+    sqlx::query!(r#"UPDATE item SET is_checked = false WHERE is_checked = true"#)
         .execute(pool)
         .await
+}
+
+/// Return (path, label)
+pub async fn mark_obsolete(pool: &SqlitePool, id: i64) -> Result<(String, String), sqlx::Error> {
+    sqlx::query!(r#"UPDATE item SET is_checked = false WHERE id = ?"#, id)
+        .execute(pool)
+        .await?;
+
+    struct Temp {
+        path: String,
+        label: String,
+    };
+    let ret = sqlx::query_as!(
+        Temp,
+        r#"SELECT item.path, base.label FROM base INNER JOIN item ON base.id = item.base_id WHERE item.id = ?"#,
+        id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok((ret.path, ret.label))
 }
 
 pub async fn update_or_insert(
@@ -35,7 +52,6 @@ pub async fn update_or_insert(
             {
                 parent_id = id;
             } else {
-                let name = name.unwrap_or_default();
                 parent_id = sqlx::query!(r#"INSERT INTO item ( path, base_id) VALUES (?, ?)"#, parent, base_id)
                     .execute(pool)
                     .await?
@@ -87,10 +103,24 @@ pub async fn clean(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
     Ok(count)
 }
 
+pub async fn get_by_id(pool: &SqlitePool, id: i64) -> Result<(Item, String), sqlx::Error> {
+    let item = sqlx::query_as!(Item, "SELECT id, name, path FROM item WHERE id = ?", id)
+        .fetch_one(pool)
+        .await?;
+    let label = sqlx::query_scalar!(
+        "SELECT label FROM base INNER JOIN item ON base.id = item.base_id WHERE item.id = ?",
+        id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok((item, label))
+}
+
 pub async fn get(pool: &SqlitePool, parent: i64, limit: i64, offset: i64) -> Result<(Vec<Item>, i64), sqlx::Error> {
     let items = sqlx::query_as!(
         Item,
-        r#"SELECT * FROM item WHERE parent = ? AND is_checked = true ORDER BY id LIMIT ? OFFSET ?"#,
+        r#"SELECT id, name, path FROM item WHERE parent = ? AND is_checked = true ORDER BY id LIMIT ? OFFSET ?"#,
         parent,
         limit,
         offset
@@ -111,7 +141,7 @@ pub async fn get(pool: &SqlitePool, parent: i64, limit: i64, offset: i64) -> Res
 pub async fn get_root(pool: &SqlitePool, limit: i64, offset: i64) -> Result<(Vec<Item>, i64), sqlx::Error> {
     let items = sqlx::query_as!(
         Item,
-        r#"SELECT * FROM item WHERE path = '' AND is_checked = true ORDER BY id LIMIT ? OFFSET ?"#,
+        r#"SELECT id, name, path FROM item WHERE path = '' AND is_checked = true ORDER BY id LIMIT ? OFFSET ?"#,
         limit,
         offset
     )
