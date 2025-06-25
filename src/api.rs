@@ -65,7 +65,7 @@ struct DeleteRequest {
 #[get("get")]
 async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<GetRequest>) -> impl Responder {
     let page = max(1, query_params.page.unwrap_or(1)) - 1;
-    let limit = max(0, query_params.count.unwrap_or(config.count));
+    let limit = max(0, query_params.count.unwrap_or(config.api.per_page as i64));
     let offset = page * limit;
     let mut ret = Vec::new();
     let mut err = None;
@@ -310,7 +310,6 @@ async fn empty_trash(config: Data<Config>) -> impl Responder {
 #[get("search")]
 async fn search() -> impl Responder {
     web::Json("")
-
 }
 
 async fn move_to_dir(file: &PathBuf, dir: &PathBuf) -> anyhow::Result<()> {

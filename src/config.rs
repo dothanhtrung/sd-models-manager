@@ -14,7 +14,7 @@ const DEFAULT_DB_INIT_TIMEOUT_SEC: u64 = 5;
 
 const DEFAULT_SQLITE_PATH: &str = "db/sd-models-manager.sqlite";
 
-const DEFAULT_API_PER_PAGE: u64 = 20;
+const DEFAULT_API_PER_PAGE: u32 = 20;
 
 #[derive(Deserialize, Debug, Serialize, Clone)]
 pub struct SQLiteConfig {
@@ -46,7 +46,7 @@ impl Default for DBConfig {
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct APIConfig {
-    pub per_page: u64,
+    pub per_page: u32,
 }
 
 impl Default for APIConfig {
@@ -74,7 +74,6 @@ pub struct Config {
     pub db: DBConfig,
     pub api: APIConfig,
     pub civitai: CivitaiConfig,
-    pub count: i64, // number of items return for one page
 }
 
 impl Default for Config {
@@ -94,7 +93,6 @@ impl Default for Config {
             db: DBConfig::default(),
             api: APIConfig::default(),
             civitai: CivitaiConfig::default(),
-            count: 20,
         }
     }
 }
