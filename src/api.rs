@@ -3,7 +3,7 @@
 use crate::civitai::{update_model_info, PREVIEW_EXT};
 use crate::config::Config;
 use crate::db::base::find_or_create;
-use crate::db::item::{update_or_insert, Item};
+use crate::db::item::{insert_or_update, Item};
 use crate::db::{base, item, DBPool};
 use crate::BASE_PATH_PREFIX;
 use actix_web::web::{Data, Query};
@@ -45,6 +45,7 @@ struct GetRequest {
     pub folder: Option<i64>,
     pub page: Option<i64>,
     pub count: Option<i64>,
+    pub search: Option<String>,
 }
 
 #[derive(Serialize, Default)]
@@ -55,6 +56,7 @@ struct ModelInfo {
     preview: String,
     is_dir: bool,
     info: Option<String>,
+    tags: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -62,7 +64,7 @@ struct DeleteRequest {
     id: Vec<i64>,
 }
 
-#[get("get")]
+#[get("")]
 async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<GetRequest>) -> impl Responder {
     let page = max(1, query_params.page.unwrap_or(1)) - 1;
     let limit = max(0, query_params.count.unwrap_or(config.api.per_page as i64));
@@ -108,12 +110,15 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
                         preview = preview_path.to_str().unwrap_or_default().to_string();
                     }
 
+                    let tags = item::get_tags(&db_pool.sqlite_pool, item.id).await.unwrap_or_default();
+
                     ret.push(ModelInfo {
                         id: item.id,
                         name: item.name.unwrap_or_default(),
                         path: model_path.to_str().unwrap_or_default().to_string(),
                         preview,
                         is_dir,
+                        tags,
                         info: None,
                     })
                 }
@@ -126,18 +131,13 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
                 total = _total;
                 for item in items {
                     let model_path = PathBuf::from(&item.path);
-                    let name = model_path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_str()
-                        .unwrap_or_default()
-                        .to_string();
                     ret.push(ModelInfo {
                         id: item.id,
-                        name,
+                        name: item.name.unwrap_or_default(),
                         path: model_path.to_str().unwrap_or_default().to_string(),
                         preview: String::from("/assets/folder.png"),
                         is_dir: true,
+                        tags: Vec::new(),
                         info: None,
                     })
                 }
@@ -157,12 +157,14 @@ async fn get_item(config: Data<Config>, db_pool: Data<DBPool>, url_param: web::P
             let (model_path, json_path, preview_path) = get_abs_path(&config, &label, &_item.path);
             let info = fs::read_to_string(&json_path).await.unwrap_or_default();
             let is_dir = PathBuf::from(&model_path).is_dir();
+            let tags = item::get_tags(&db_pool.sqlite_pool, item_id).await.unwrap_or_default();
             let item = ModelInfo {
                 id: item_id,
                 name: _item.name.unwrap_or_default(),
                 path: model_path,
                 preview: preview_path,
                 is_dir,
+                tags,
                 info: Some(info),
             };
             web::Json(GetResponse {
@@ -184,7 +186,7 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
     rt::spawn(async move {
         let valid_ext = config.extensions.iter().collect::<HashSet<_>>();
 
-        if let Err(e) = item::mark_all_not_check(&db_pool.sqlite_pool).await {
+        if let Err(e) = item::mark_obsolete_all(&db_pool.sqlite_pool).await {
             error!("Failed to mark all item for reload: {}", e);
             return;
         }
@@ -235,7 +237,7 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
 
                 if need_update {
                     if let Err(e) =
-                        update_or_insert(&db_pool.sqlite_pool, Some(name.as_str()), &relative_path, base_id).await
+                        insert_or_update(&db_pool.sqlite_pool, Some(name.as_str()), &relative_path, base_id).await
                     {
                         error!("Failed to insert item: {}", e);
                     }

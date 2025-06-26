@@ -1,19 +1,34 @@
 {% include "partial/header.html" %}
 {% include "partial/search.html" %}
 
-<div class="container mx-auto px-4 py-6">
-    <div class="flex flex-wrap items-center justify-between mb-6 gap-2">
-        <div class="space-x-2">
-            <button
-                    id="reloadBtn"
-                    class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-                🔁 Reload from Disk
-            </button>
-            <button
-                    id="syncBtn"
-                    class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
-                🔗 Sync from Civitai
-            </button>
+
+<div class="px-4 flex justify-center gap-4">
+    <button
+            id="reloadBtn"
+            class="bg-gray-800 border border-gray-700 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition"
+    >
+        🔁 Reload from Disk
+    </button>
+
+    <button
+            id="syncBtn"
+            class="bg-gray-800 border border-gray-700 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition"
+    >
+        🔗 Sync from Civitai
+    </button>
+</div>
+
+
+<!-- Main content section -->
+<main id="main-content" class="px-4 py-6">
+    <div id="loadingSpinner">
+        <div class="flex justify-center py-10">
+            <svg class="animate-spin h-8 w-8 text-purple-400" xmlns="http://www.w3.org/2000/svg" fill="none"
+                 viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+            </svg>
         </div>
     </div>
 
@@ -21,23 +36,39 @@
         <div id="paginationTop" class="inline-flex flex-wrap items-center gap-1"></div>
     </div>
 
-    <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        <!-- Cards will be inserted here -->
+    <div id="grid" class="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+        <div class="hidden relative bg-gray-900 border border-gray-700 rounded-lg overflow-hidden shadow-md">
+            <a href="" class="block">
+                <img src="" alt="" class="w-full aspect-w-1 aspect-h-1 object-cover bg-gray-100">
+                <div class="p-4">
+                    <h2 class="text-lg font-semibold truncate"></h2>
+                </div>
+            </a>
+        </div>
     </div>
 
     <div class="flex justify-start items-center my-4">
         <div id="paginationBottom" class="inline-flex flex-wrap items-center gap-1"></div>
     </div>
 
-
-    <!-- Loading Spinner -->
-    <div id="loadingSpinner" class="fixed center z-50 hidden">
-        <div class="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
-    </div>
-</div>
+</main>
 
 
 <script>
+    const loading = document.getElementById("loading");
+    const grid = document.getElementById("grid");
+
+    function showLoading(show) {
+        const spinner = document.getElementById("loadingSpinner");
+        spinner.classList.toggle("hidden", !show);
+    }
+
+    function getApiUrl() {
+        const path = window.location.pathname;
+        const search = window.location.search;
+        return "/api" + (path === "/" ? "" : path) + search;
+    }
+
     function renderPagination(currentPage, totalItems, folder, count) {
         const totalPages = Math.max(1, Math.ceil(totalItems / count));
         const top = document.getElementById("paginationTop");
@@ -92,63 +123,57 @@
         createPagination(bottom);
     }
 
+    async function fetchAndRenderItems() {
+        showLoading(true);
 
-    async function fetchModels() {
-        const query = window.location.search;
-        const apiUrl = `/api/get${query}`;
-        const res = await fetch(apiUrl);
-        const data = await res.json();
+        try {
+            const res = await fetch(getApiUrl());
+            const data = await res.json();
 
-        const items = data.items;
-        if (!Array.isArray(items)) throw new Error("Expected `items` to be an array");
+            if (data.err) throw new Error(data.err);
 
-        const grid = document.getElementById("grid");
-        grid.innerHTML = "";
+            showLoading(false);
+            grid.innerHTML = "";
 
-        items.forEach(model => {
-            const card = document.createElement("div");
-            const href = model.is_dir ? `/?folder=${model.id}` : `/item/${model.id}`;
-            card.className = "relative bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow";
-
-
-            card.innerHTML = `
-                    <a href="${href}" title="${model.path}" class="block">
-                        <img src="${model.preview}" alt="${model.name}" class="w-full aspect-w-1 aspect-h-1 object-cover bg-gray-100">
+            data.items.forEach(item => {
+                const card = document.createElement("div");
+                card.className = "relative bg-gray-900 border border-gray-700 rounded-lg overflow-hidden shadow-md";
+                const link = item.is_dir ? `/?folder=${item.id}` : `/item/${item.id}`;
+                card.innerHTML = `
+                  <a href="${link}" class="block">
+                    <img src="${item.preview}" alt="${item.name}" class="w-full aspect-w-1 aspect-h-1 object-cover bg-gray-100">
                         <div class="p-4">
-                            <h2 class="text-lg font-semibold truncate">${model.name}</h2>
+                            <h2 class="text-lg font-semibold truncate">${item.name}</h2>
                         </div>
-                    </a>
+                  </a>
                 `;
 
-            grid.appendChild(card);
-        });
+                grid.appendChild(card);
+            });
 
-        const params = new URLSearchParams(window.location.search);
-        const page = parseInt(params.get("page") || "1");
-        const folder = params.get("folder") || "";
-        const count = parseInt(params.get("count") || "20");
+            const params = new URLSearchParams(window.location.search);
+            const page = parseInt(params.get("page") || "1");
+            const folder = params.get("folder") || "";
+            const count = parseInt(params.get("count") || "20");
 
-        renderPagination(page, data.total, folder, count);
+            renderPagination(page, data.total, folder, count);
+
+        } catch (err) {
+            grid.innerHTML = `<p class="text-red-400 text-center py-10">Failed to load items: ${err.message}</p>`;
+        }
 
     }
 
-    fetchModels();
-
-
+    // Initial load
+    fetchAndRenderItems();
 </script>
 
-
 <script>
-    function showLoading(show) {
-        const spinner = document.getElementById("loadingSpinner");
-        spinner.classList.toggle("hidden", !show);
-    }
-
     async function callAndRefresh(endpoint) {
         try {
             showLoading(true);
             await fetch(endpoint); // GET request
-            await fetchModels();   // Refresh grid
+            await fetchAndRenderItems();   // Refresh grid
         } catch (err) {
             console.error(`Failed to call ${endpoint}`, err);
         } finally {
@@ -164,7 +189,6 @@
         callAndRefresh("/api/sync_civitai");
     });
 </script>
-
 
 </body>
 </html>

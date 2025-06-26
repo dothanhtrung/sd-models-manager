@@ -28,7 +28,7 @@ pub async fn find_or_create(pool: &SqlitePool, label: &str) -> Result<i64, sqlx:
             .await?;
         Ok(id)
     } else {
-        let id = sqlx::query!(r#"INSERT INTO base (label) VALUES (?)"#, label)
+        let id = sqlx::query!(r#"INSERT OR IGNORE INTO base (label) VALUES (?)"#, label)
             .execute(pool)
             .await?
             .last_insert_rowid();

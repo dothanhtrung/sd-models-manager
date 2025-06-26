@@ -2,6 +2,7 @@
 
 pub mod base;
 pub mod item;
+pub mod tag;
 
 use crate::config::DBConfig;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -14,6 +15,7 @@ pub struct DBPool {
 impl DBPool {
     pub async fn init(config: &DBConfig) -> anyhow::Result<Self> {
         let sqlite_pool = SqlitePoolOptions::new().connect(&config.sqlite.db_path).await?;
+        sqlx::query!("PRAGMA foreign_keys = ON").execute(&sqlite_pool).await?;
 
         Ok(Self {
             sqlite_pool,

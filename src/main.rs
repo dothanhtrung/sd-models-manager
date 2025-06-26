@@ -1,4 +1,17 @@
 //! Copyright (c) 2025 Trung Do <dothanhtrung@pm.me>.
+//!
+//!
+//! TODO:
+//! * Search
+//! * Replace preview image. Add note.
+//! * Create folder and move model
+//! * Tag
+//!   * Auto tag from json info
+//!   * Edit tag
+//!   * Tag depend
+//! * Browsing and download model from Civitai
+//! * Download new version of model from Civitai
+//! * Duplicate check
 
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;

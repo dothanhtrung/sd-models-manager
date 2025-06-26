@@ -8,8 +8,8 @@ pub struct Item {
     pub path: String,
 }
 
-pub async fn mark_all_not_check(pool: &SqlitePool) -> Result<SqliteQueryResult, sqlx::Error> {
-    sqlx::query!(r#"UPDATE item SET is_checked = false WHERE is_checked = true"#)
+pub async fn mark_obsolete_all(pool: &SqlitePool) -> Result<SqliteQueryResult, sqlx::Error> {
+    sqlx::query!(r#"UPDATE item SET is_checked = false WHERE is_checked = true AND path != ''"#)
         .execute(pool)
         .await
 }
@@ -35,7 +35,7 @@ pub async fn mark_obsolete(pool: &SqlitePool, id: i64) -> Result<(String, String
     Ok((ret.path, ret.label))
 }
 
-pub async fn update_or_insert(
+pub async fn insert_or_update(
     pool: &SqlitePool,
     name: Option<&str>,
     path: &str,
@@ -52,7 +52,7 @@ pub async fn update_or_insert(
             {
                 parent_id = id;
             } else {
-                parent_id = sqlx::query!(r#"INSERT INTO item ( path, base_id) VALUES (?, ?)"#, parent, base_id)
+                parent_id = sqlx::query!(r#"INSERT OR IGNORE INTO item ( path, base_id) VALUES (?, ?)"#, parent, base_id)
                     .execute(pool)
                     .await?
                     .last_insert_rowid();
@@ -73,7 +73,7 @@ pub async fn update_or_insert(
         .await?;
     } else if parent_id != 0 {
         sqlx::query!(
-            r#"INSERT INTO item (name, path, base_id, parent) VALUES (?, ?, ?, ?) "#,
+            r#"INSERT OR IGNORE INTO item (name, path, base_id, parent) VALUES (?, ?, ?, ?) "#,
             name,
             path,
             base_id,
@@ -83,7 +83,7 @@ pub async fn update_or_insert(
         .await?;
     } else {
         sqlx::query!(
-            r#"INSERT INTO item (name, path, base_id) VALUES (?, ?,  ?) "#,
+            r#"INSERT OR IGNORE INTO item (name, path, base_id) VALUES (?, ?,  ?) "#,
             name,
             path,
             base_id,
@@ -120,7 +120,7 @@ pub async fn get_by_id(pool: &SqlitePool, id: i64) -> Result<(Item, String), sql
 pub async fn get(pool: &SqlitePool, parent: i64, limit: i64, offset: i64) -> Result<(Vec<Item>, i64), sqlx::Error> {
     let items = sqlx::query_as!(
         Item,
-        r#"SELECT id, name, path FROM item WHERE parent = ? AND is_checked = true ORDER BY id LIMIT ? OFFSET ?"#,
+        r#"SELECT id, name, path FROM item WHERE parent = ? AND is_checked = true ORDER BY id DESC LIMIT ? OFFSET ?"#,
         parent,
         limit,
         offset
@@ -161,5 +161,14 @@ pub async fn get_label(pool: &SqlitePool, id: i64) -> Result<String, sqlx::Error
         id
     )
     .fetch_one(pool)
+    .await
+}
+
+pub async fn get_tags(pool: &SqlitePool, id: i64) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar!(
+        "SELECT tag.name FROM tag INNER JOIN tag_item ON tag.name = tag_item.tag WHERE tag_item.item = ?",
+        id
+    )
+    .fetch_all(pool)
     .await
 }
