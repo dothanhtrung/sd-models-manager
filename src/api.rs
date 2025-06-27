@@ -2,7 +2,6 @@
 
 use crate::civitai::{update_model_info, PREVIEW_EXT};
 use crate::config::Config;
-use crate::db::base::find_or_create;
 use crate::db::item::{insert_or_update, Item};
 use crate::db::{base, item, DBPool};
 use crate::BASE_PATH_PREFIX;
@@ -14,6 +13,7 @@ use sqlx::Error;
 use std::cmp::max;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use serde_json::Value;
 use tokio::fs;
 use tracing::error;
 
@@ -42,7 +42,6 @@ struct GetResponse {
 
 #[derive(Deserialize)]
 struct GetRequest {
-    pub folder: Option<i64>,
     pub page: Option<i64>,
     pub count: Option<i64>,
     pub search: Option<String>,
@@ -54,7 +53,6 @@ struct ModelInfo {
     name: String,
     path: String,
     preview: String,
-    is_dir: bool,
     info: Option<String>,
     tags: Vec<String>,
 }
@@ -73,51 +71,19 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
     let mut err = None;
     let mut total = 0;
 
-    if let Some(folder) = query_params.folder {
-        let Ok(base_label) = item::get_label(&db_pool.sqlite_pool, folder).await else {
-            return web::Json(GetResponse {
-                items: ret,
-                total: 0,
-                err: Some("Cannot find model path".to_string()),
-            });
-        };
-
-        let Some(base_path) = config.model_paths.get(&base_label) else {
-            return web::Json(GetResponse {
-                items: ret,
-                total: 0,
-                err: Some("Unknown model path for folder".to_string()),
-            });
-        };
-
-        let base_path = PathBuf::from(base_path);
-
-        match item::get(&db_pool.sqlite_pool, folder, limit, offset).await {
+        match item::get(&db_pool.sqlite_pool, limit, offset).await {
             Ok((items, _total)) => {
                 total = _total;
                 for item in items {
-                    let model_path = base_path.join(&item.path);
-
-                    let mut preview = String::from("/assets/folder.png");
-                    let mut is_dir = false;
-
-                    if model_path.is_dir() || item.path.is_empty() {
-                        is_dir = true;
-                    } else {
-                        let preview_path = PathBuf::from(format!("/{}{}", BASE_PATH_PREFIX, base_label));
-                        let mut preview_path = preview_path.join(item.path);
-                        preview_path.set_extension(PREVIEW_EXT);
-                        preview = preview_path.to_str().unwrap_or_default().to_string();
-                    }
+                    let (model_url, _, preview_url) = get_abs_path(&config, &item.base_label, &item.path);
 
                     let tags = item::get_tags(&db_pool.sqlite_pool, item.id).await.unwrap_or_default();
 
                     ret.push(ModelInfo {
                         id: item.id,
                         name: item.name.unwrap_or_default(),
-                        path: model_path.to_str().unwrap_or_default().to_string(),
-                        preview,
-                        is_dir,
+                        path: model_url,
+                        preview: preview_url,
                         tags,
                         info: None,
                     })
@@ -125,26 +91,7 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
             }
             Err(e) => err = Some(format!("{}", e)),
         }
-    } else {
-        match item::get_root(&db_pool.sqlite_pool, limit, offset).await {
-            Ok((items, _total)) => {
-                total = _total;
-                for item in items {
-                    let model_path = PathBuf::from(&item.path);
-                    ret.push(ModelInfo {
-                        id: item.id,
-                        name: item.name.unwrap_or_default(),
-                        path: model_path.to_str().unwrap_or_default().to_string(),
-                        preview: String::from("/assets/folder.png"),
-                        is_dir: true,
-                        tags: Vec::new(),
-                        info: None,
-                    })
-                }
-            }
-            Err(e) => err = Some(format!("{}", e)),
-        }
-    }
+
 
     web::Json(GetResponse { items: ret, total, err })
 }
@@ -153,17 +100,15 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
 async fn get_item(config: Data<Config>, db_pool: Data<DBPool>, url_param: web::Path<(i64,)>) -> impl Responder {
     let item_id = url_param.into_inner().0;
     match item::get_by_id(&db_pool.sqlite_pool, item_id).await {
-        Ok((_item, label)) => {
-            let (model_path, json_path, preview_path) = get_abs_path(&config, &label, &_item.path);
-            let info = fs::read_to_string(&json_path).await.unwrap_or_default();
-            let is_dir = PathBuf::from(&model_path).is_dir();
+        Ok(_item) => {
+            let (model_url, json_url, preview_url) = get_abs_path(&config, &_item.base_label, &_item.path);
+            let info = fs::read_to_string(&json_url).await.unwrap_or_default();
             let tags = item::get_tags(&db_pool.sqlite_pool, item_id).await.unwrap_or_default();
             let item = ModelInfo {
                 id: item_id,
                 name: _item.name.unwrap_or_default(),
-                path: model_path,
-                preview: preview_path,
-                is_dir,
+                path: model_url,
+                preview: preview_url,
                 tags,
                 info: Some(info),
             };
@@ -191,16 +136,7 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
             return;
         }
 
-        if let Err(e) = base::mark_all_not_check(&db_pool.sqlite_pool).await {
-            error!("Failed to mark all item for reload: {}", e);
-            return;
-        }
-
         for (label, base_path) in config.model_paths.iter() {
-            let Ok(base_id) = find_or_create(&db_pool.sqlite_pool, label).await else {
-                continue;
-            };
-
             let parallelism = Parallelism::RayonNewPool(config.walkdir_parallel);
             for entry in WalkDir::new(base_path)
                 .skip_hidden(true)
@@ -209,7 +145,6 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
                 .into_iter()
                 .flatten()
             {
-                let mut need_update = false;
                 let path = entry.path();
 
                 let mut name = path
@@ -226,20 +161,20 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
                 if entry.file_type().is_file() || entry.file_type().is_symlink() {
                     let file_ext = path.extension().unwrap_or_default().to_str().unwrap_or_default();
                     if valid_ext.contains(&file_ext.to_string()) {
-                        need_update = true;
-                    }
-                } else {
-                    need_update = true;
-                    if relative_path.is_empty() {
-                        name = (*label).clone();
-                    }
-                }
+                        let mut json_file = PathBuf::from(path);
+                        json_file.set_extension("json");
+                        let info = fs::read_to_string(&json_file).await.unwrap_or_default();
+                        let v: Value = serde_json::from_str(&info).unwrap();
+                        let blake3 = v["files"][0]["hashes"]["BLAKE3"].as_str().unwrap_or_default();
+                        let format = v["files"][0]["metadata"]["BLAKE3"].as_str().unwrap_or_default();
+                        let model_name = v["model"]["name"].as_str().unwrap_or_default();
+                        let model_type = v["model"]["type"].as_str().unwrap_or_default();
 
-                if need_update {
-                    if let Err(e) =
-                        insert_or_update(&db_pool.sqlite_pool, Some(name.as_str()), &relative_path, base_id).await
-                    {
-                        error!("Failed to insert item: {}", e);
+                        if let Err(e) =
+                            insert_or_update(&db_pool.sqlite_pool, Some(name.as_str()), &relative_path, label).await
+                        {
+                            error!("Failed to insert item: {}", e);
+                        }
                     }
                 }
             }

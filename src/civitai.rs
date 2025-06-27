@@ -23,6 +23,10 @@ enum FileType {
     Image,
 }
 
+struct FileMetadata {
+    
+}
+
 pub async fn update_model_info(config: Config) -> anyhow::Result<()> {
     let valid_ext = config.extensions.iter().collect::<HashSet<_>>();
     let client = Client::new();

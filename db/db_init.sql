@@ -21,38 +21,32 @@ create table item
         constraint item_pk
             primary key autoincrement,
     path       TEXT                 not null,
-    base_id    integer              not null
-        constraint item_base_id_fk
-            references base
-            on update cascade on delete cascade,
-    hash       TEXT    default ''   not null,
+    base_label TEXT                 not null,
+    blake3     TEXT    default ''   not null,
     is_checked integer default true not null,
-    parent     integer
-        constraint item_item_id_fk
-            references item
-            on update cascade on delete cascade,
     name       TEXT    default ''   not null,
     note       TEXT    default ''   not null,
     created_at INTEGER,
     updated_at integer,
     model_name TEXT    default ''   not null,
     constraint item_pk_2
-        unique (path, base_id),
-    constraint item_pk_3
-        unique (path, parent)
+        unique (path, base_label)
 );
 
 create table tag
 (
-    name        TEXT not null
+    name        TEXT    not null
+        constraint tag_pk_2
+            unique,
+    description integer,
+    id          integer not null
         constraint tag_pk
-            primary key,
-    description integer
+            primary key autoincrement
 );
 
 create table tag_item
 (
-    tag  TEXT    not null
+    tag  INTEGER not null
         constraint tag_item_tag_id_fk
             references tag
             on update cascade on delete cascade,
@@ -69,16 +63,16 @@ create unique index tag_item_item_tag_uindex
 
 create table tag_tag
 (
-    tag    TEXT not null
+    tag INTEGER not null
         constraint tag_tag_tag_id_fk
             references tag
             on update cascade on delete cascade,
-    depend TEXT not null
+    dep INTEGER not null
         constraint tag_tag_tag_id_fk_2
             references tag
             on update cascade on delete cascade,
     constraint tag_tag_pk
-        primary key (tag, depend)
+        primary key (tag, dep)
 );
 
 
