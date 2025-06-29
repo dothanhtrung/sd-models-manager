@@ -41,7 +41,7 @@
         const makeBtn = (label, page, disabled = false, isActive = false) => {
             const btn = document.createElement("a");
             btn.textContent = label;
-            btn.href = `/?folder=${folder}&page=${page}&count=${count}`;
+            btn.href = `/?search=${folder}&page=${page}&count=${count}`;
             btn.className =
                 "px-3 py-1 mx-1 rounded text-sm " +
                 (disabled
@@ -116,10 +116,10 @@
 
             const params = new URLSearchParams(window.location.search);
             const page = parseInt(params.get("page") || "1");
-            const folder = params.get("folder") || "";
+            const search = params.get("search") || "";
             const count = parseInt(params.get("count") || "20");
 
-            renderPagination(page, data.total, folder, count);
+            renderPagination(page, data.total, search, count);
 
         } catch (err) {
             grid.innerHTML = `<p class="text-red-400 text-center py-10">Failed to load items: ${err.message}</p>`;

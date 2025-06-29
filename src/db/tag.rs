@@ -53,20 +53,25 @@ pub async fn add_tag_item(pool: &SqlitePool, item: i64, tags: &Vec<String>) -> R
 pub async fn add_tag_from_model_info(
     pool: &SqlitePool,
     item: i64,
+    extra_tags: &Vec<String>,
     model_info: &CivitaiModel,
     file_metadata: &CivitaiFileMetadata,
 ) -> Result<(), sqlx::Error> {
     let mut tags = Vec::new();
-    tags.push(model_info.model_type.clone());
+    for tag in extra_tags {
+        tags.push(tag.clone().replace(" ", "_").to_lowercase());
+    }
+
+    tags.push(model_info.model_type.clone().replace(" ", "_").to_lowercase());
     if model_info.nsfw {
         tags.push(String::from("nsfw"));
     }
     if model_info.poi {
         tags.push(String::from("poi"));
     }
-    tags.push(file_metadata.format.clone());
+    tags.push(file_metadata.format.clone().replace(" ", "_").to_lowercase());
     if let Some(fp) = file_metadata.fp {
-        tags.push(String::from("fp"));
+        tags.push(fp.to_string());
     }
     add_tag_item(pool, item, &tags).await
 }

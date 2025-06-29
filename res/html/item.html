@@ -55,7 +55,7 @@
             tagContainer.innerHTML = "";
             (item.tags || []).forEach(tag => {
                 const a = document.createElement("a");
-                a.href = `/tag/${encodeURIComponent(tag)}`;
+                a.href = `/?search=${encodeURIComponent(tag)}`;
                 a.textContent = tag;
                 a.className = " text-emerald-100 px-2 py-0.9 rounded text-sm hover:text-emerald-200 transition  justify-center justify-items-center justify-self-center";
                 tagContainer.appendChild(a);

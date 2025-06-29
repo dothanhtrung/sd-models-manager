@@ -178,6 +178,7 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
                         json_file.set_extension("json");
                         let info = fs::read_to_string(&json_file).await.unwrap_or_default();
                         let v: Value = serde_json::from_str(&info).unwrap();
+                        let base_model = v["baseModel"].as_str().unwrap_or_default();
                         let blake3 = v["files"][0]["hashes"]["BLAKE3"].as_str().unwrap_or_default();
                         let file_metadata =
                             serde_json::from_value::<CivitaiFileMetadata>(v["files"][0]["metadata"].clone())
@@ -195,8 +196,15 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
                         .await
                         {
                             Ok(id) => {
-                                if let Err(e) =
-                                    add_tag_from_model_info(&db_pool.sqlite_pool, id, &model_info, &file_metadata).await
+                                let tags = vec![base_model.to_string()];
+                                if let Err(e) = add_tag_from_model_info(
+                                    &db_pool.sqlite_pool,
+                                    id,
+                                    &tags,
+                                    &model_info,
+                                    &file_metadata,
+                                )
+                                .await
                                 {
                                     error!("Failed to insert tag: {}", e);
                                 }
