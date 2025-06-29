@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <link href="/css/tailwind_output.css" rel="stylesheet">
+    <link href="/css/tailwind_output.min.css" rel="stylesheet">
     <title>Stable Diffusion Models Manager</title>
 </head>
 <body class="bg-black text-white">
@@ -13,7 +13,7 @@
     <!-- Left: Icon + Title + Navigation -->
     <div class="flex items-center space-x-5">
 <!--        <img src="/assets/icon.png" alt="" class="w-8 h-8"/>-->
-        <span class="text-2xl font-bold">SDMM</span>
+        <a href="/"><span class="text-2xl font-bold">SDMM</span></a>
         <nav class="flex items-center space-x-4 ml-6">
             <a href="/" class="hover:text-white transition font-bold">Local</a>
             <a href="/civitai" class="hover:text-white transition font-bold">Civitai</a>
@@ -31,3 +31,11 @@
         </a>
     </div>
 </div>
+
+<script>
+    function getApiUrl() {
+        const path = window.location.pathname;
+        const search = window.location.search;
+        return "/api" + (path === "/" ? "" : path) + search;
+    }
+</script>

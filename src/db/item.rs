@@ -1,8 +1,11 @@
+use crate::civitai::{CivitaiFileMetadata, CivitaiModel};
 use crate::db::tag;
 use sqlx::sqlite::SqliteQueryResult;
-use sqlx::SqlitePool;
+use sqlx::{QueryBuilder, SqlitePool};
 use std::path::PathBuf;
+use tracing::info;
 
+#[derive(sqlx::FromRow)]
 pub struct Item {
     pub id: i64,
     pub name: Option<String>,
@@ -57,8 +60,9 @@ pub async fn insert_or_update(
         ret_id = id;
     } else {
         ret_id = sqlx::query!(
-            r#"INSERT INTO item (name, path, base_label, blake3) VALUES (?, ?, ?, ?) "#,
+            r#"INSERT INTO item (name, model_name, path, base_label, blake3) VALUES (?, ?, ?, ?, ?) "#,
             name,
+            model_name,
             path,
             base_label,
             blake3,
@@ -106,9 +110,51 @@ pub async fn get(pool: &SqlitePool, limit: i64, offset: i64) -> Result<(Vec<Item
 
 pub async fn get_tags(pool: &SqlitePool, id: i64) -> Result<Vec<String>, sqlx::Error> {
     sqlx::query_scalar!(
-        "SELECT tag.name FROM tag INNER JOIN tag_item ON tag.name = tag_item.tag WHERE tag_item.item = ?",
+        "SELECT tag.name FROM tag LEFT JOIN tag_item ON tag.id = tag_item.tag WHERE tag_item.item = ?",
         id
     )
     .fetch_all(pool)
     .await
+}
+
+pub async fn search(pool: &SqlitePool, search: &str, limit: i64, offset: i64) -> Result<(Vec<Item>, i64), sqlx::Error> {
+    let mut items = sqlx::query_as!(
+        Item,
+        r#"SELECT id,name, path, base_label FROM item WHERE name COLLATE NOCASE LIKE '%' || ? || '%' ORDER BY id DESC LIMIT ? OFFSET ?"#,
+        search,limit, offset
+    )
+        .fetch_all(pool)
+        .await?;
+    let mut count = sqlx::query_scalar!("SELECT count(id) FROM item WHERE name LIKE '%' || ? || '%'", search)
+        .fetch_one(pool)
+        .await?;
+
+    let tags: Vec<String> = search.split_whitespace().map(|s| s.to_string()).collect();
+
+    if !tags.is_empty() {
+        let condition = format!(
+            "FROM item
+          INNER JOIN tag_item ON item.id = tag_item.item
+          INNER JOIN tag ON tag.id = tag_item.tag
+          WHERE item.name NOT LIKE '%{}%'
+            AND tag.name IN",
+            search
+        );
+        let query = format!(
+            "SELECT item.id as id,  item.name as name, item.path as path, item.base_label as base_label {} ('{}') ORDER BY item.id DESC LIMIT {} OFFSET {}",
+            condition,
+            tags.join("','"),
+            limit,
+            offset
+        );
+        let mut search_by_tags: Vec<Item> = sqlx::query_as(&query).fetch_all(pool).await?;
+
+        let count_query = format!("SELECT count(*) {} ('{}')", condition, tags.join("','"));
+        let tags_count: i64 = sqlx::query_scalar(&count_query).fetch_one(pool).await?;
+
+        count += tags_count;
+        items.append(&mut search_by_tags);
+    }
+
+    Ok((items, count))
 }

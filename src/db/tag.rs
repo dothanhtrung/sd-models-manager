@@ -1,3 +1,4 @@
+use crate::civitai::{CivitaiFileMetadata, CivitaiModel};
 use sqlx::SqlitePool;
 
 pub async fn add_tag(pool: &SqlitePool, name: &str) -> anyhow::Result<()> {
@@ -28,19 +29,46 @@ pub async fn rename_tag(pool: &SqlitePool, name: &str, new_name: &str) -> anyhow
     Ok(())
 }
 
-pub async fn add_tag_item(pool: &SqlitePool, item: i64, tags: Vec<&str>) -> Result<(), sqlx::Error> {
+pub async fn add_tag_item(pool: &SqlitePool, item: i64, tags: &Vec<String>) -> Result<(), sqlx::Error> {
     for tag in tags {
-        sqlx::query!(
-            "INSERT OR IGNORE INTO tag_item (item, tag) VALUES (?, (SELECT id FROM tag WHERE name = ?))",
-            item,
-            tag
-        )
-        .execute(pool)
-        .await?;
+        let tag_id = match sqlx::query_scalar!("SELECT id FROM tag WHERE name = ?", tag)
+            .fetch_one(pool)
+            .await
+        {
+            Ok(id) => id,
+            Err(_) => sqlx::query!("INSERT INTO tag (name) VALUES (?)", tag)
+                .execute(pool)
+                .await?
+                .last_insert_rowid(),
+        };
+        sqlx::query!("INSERT OR IGNORE INTO tag_item (item, tag) VALUES (?, ?)", item, tag_id)
+            .execute(pool)
+            .await?;
     }
     // TODO: Insert depend tags
 
     Ok(())
+}
+
+pub async fn add_tag_from_model_info(
+    pool: &SqlitePool,
+    item: i64,
+    model_info: &CivitaiModel,
+    file_metadata: &CivitaiFileMetadata,
+) -> Result<(), sqlx::Error> {
+    let mut tags = Vec::new();
+    tags.push(model_info.model_type.clone());
+    if model_info.nsfw {
+        tags.push(String::from("nsfw"));
+    }
+    if model_info.poi {
+        tags.push(String::from("poi"));
+    }
+    tags.push(file_metadata.format.clone());
+    if let Some(fp) = file_metadata.fp {
+        tags.push(String::from("fp"));
+    }
+    add_tag_item(pool, item, &tags).await
 }
 
 pub async fn remove_tag_item(pool: &SqlitePool, item: i64, tag: &str) -> anyhow::Result<()> {

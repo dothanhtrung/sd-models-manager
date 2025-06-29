@@ -4,6 +4,7 @@ use crate::config::Config;
 use jwalk::{Parallelism, WalkDir};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use reqwest::Client;
+use serde::Deserialize;
 use serde_json::{to_string_pretty, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -23,8 +24,20 @@ enum FileType {
     Image,
 }
 
-struct FileMetadata {
-    
+#[derive(Deserialize, Default)]
+pub struct CivitaiFileMetadata {
+    pub format: String,
+    pub fp: Option<u32>,
+    pub size: Option<u64>,
+}
+
+#[derive(Deserialize, Default)]
+pub struct CivitaiModel {
+    pub name: String,
+    pub nsfw: bool,
+    pub poi: bool,
+    #[serde(rename = "type")]
+    pub model_type: String,
 }
 
 pub async fn update_model_info(config: Config) -> anyhow::Result<()> {

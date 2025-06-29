@@ -66,14 +66,14 @@ pub struct CivitaiConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
+    pub db: DBConfig,
+    pub model_paths: HashMap<String, String>,
+    pub civitai: CivitaiConfig,
     pub listen_addr: String,
     pub listen_port: u32,
-    pub walkdir_parallel: usize,
-    pub model_paths: HashMap<String, String>,
-    pub extensions: Vec<String>,
-    pub db: DBConfig,
     pub api: APIConfig,
-    pub civitai: CivitaiConfig,
+    pub walkdir_parallel: usize,
+    pub extensions: Vec<String>,
 }
 
 impl Default for Config {

@@ -1,19 +1,20 @@
 //! Copyright (c) 2025 Trung Do <dothanhtrung@pm.me>.
 
-use crate::civitai::{update_model_info, PREVIEW_EXT};
+use crate::civitai::{update_model_info, CivitaiFileMetadata, CivitaiModel, PREVIEW_EXT};
 use crate::config::Config;
 use crate::db::item::{insert_or_update, Item};
+use crate::db::tag::add_tag_from_model_info;
 use crate::db::{base, item, DBPool};
 use crate::BASE_PATH_PREFIX;
 use actix_web::web::{Data, Query};
 use actix_web::{get, rt, web, Responder};
 use jwalk::{Parallelism, WalkDir};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sqlx::Error;
 use std::cmp::max;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use serde_json::Value;
 use tokio::fs;
 use tracing::error;
 
@@ -45,6 +46,7 @@ struct GetRequest {
     pub page: Option<i64>,
     pub count: Option<i64>,
     pub search: Option<String>,
+    pub tags: Option<String>,
 }
 
 #[derive(Serialize, Default)]
@@ -70,28 +72,39 @@ async fn get(config: Data<Config>, db_pool: Data<DBPool>, query_params: Query<Ge
     let mut ret = Vec::new();
     let mut err = None;
     let mut total = 0;
-
-        match item::get(&db_pool.sqlite_pool, limit, offset).await {
-            Ok((items, _total)) => {
-                total = _total;
-                for item in items {
-                    let (model_url, _, preview_url) = get_abs_path(&config, &item.base_label, &item.path);
-
-                    let tags = item::get_tags(&db_pool.sqlite_pool, item.id).await.unwrap_or_default();
-
-                    ret.push(ModelInfo {
-                        id: item.id,
-                        name: item.name.unwrap_or_default(),
-                        path: model_url,
-                        preview: preview_url,
-                        tags,
-                        info: None,
-                    })
-                }
+    let mut items = Vec::new();
+    (items, total) = if let Some(search_string) = &query_params.search {
+        match item::search(&db_pool.sqlite_pool, search_string, limit, offset).await {
+            Ok((i, t)) => (i, t),
+            Err(e) => {
+                err = Some(format!("{}", e));
+                (Vec::new(), 0)
             }
-            Err(e) => err = Some(format!("{}", e)),
         }
+    } else {
+        match item::get(&db_pool.sqlite_pool, limit, offset).await {
+            Ok((i, t)) => (i, t),
+            Err(e) => {
+                err = Some(format!("{}", e));
+                (Vec::new(), 0)
+            }
+        }
+    };
 
+    for item in items {
+        let (model_url, _, preview_url) = get_abs_path(&config, &item.base_label, &item.path);
+
+        let tags = item::get_tags(&db_pool.sqlite_pool, item.id).await.unwrap_or_default();
+
+        ret.push(ModelInfo {
+            id: item.id,
+            name: item.name.unwrap_or_default(),
+            path: model_url,
+            preview: preview_url,
+            tags,
+            info: None,
+        })
+    }
 
     web::Json(GetResponse { items: ret, total, err })
 }
@@ -147,7 +160,7 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
             {
                 let path = entry.path();
 
-                let mut name = path
+                let name = path
                     .file_name()
                     .unwrap_or_default()
                     .to_str()
@@ -166,14 +179,29 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
                         let info = fs::read_to_string(&json_file).await.unwrap_or_default();
                         let v: Value = serde_json::from_str(&info).unwrap();
                         let blake3 = v["files"][0]["hashes"]["BLAKE3"].as_str().unwrap_or_default();
-                        let format = v["files"][0]["metadata"]["BLAKE3"].as_str().unwrap_or_default();
-                        let model_name = v["model"]["name"].as_str().unwrap_or_default();
-                        let model_type = v["model"]["type"].as_str().unwrap_or_default();
+                        let file_metadata =
+                            serde_json::from_value::<CivitaiFileMetadata>(v["files"][0]["metadata"].clone())
+                                .unwrap_or_default();
+                        let model_info = serde_json::from_value::<CivitaiModel>(v["model"].clone()).unwrap_or_default();
 
-                        if let Err(e) =
-                            insert_or_update(&db_pool.sqlite_pool, Some(name.as_str()), &relative_path, label).await
+                        match insert_or_update(
+                            &db_pool.sqlite_pool,
+                            Some(name.as_str()),
+                            &relative_path,
+                            label,
+                            blake3,
+                            &model_info.name,
+                        )
+                        .await
                         {
-                            error!("Failed to insert item: {}", e);
+                            Ok(id) => {
+                                if let Err(e) =
+                                    add_tag_from_model_info(&db_pool.sqlite_pool, id, &model_info, &file_metadata).await
+                                {
+                                    error!("Failed to insert tag: {}", e);
+                                }
+                            }
+                            Err(e) => error!("Failed to insert item: {}", e),
                         }
                     }
                 }
@@ -186,14 +214,12 @@ async fn reload_from_disk(config: Data<Config>, db_pool: Data<DBPool>) -> impl R
 #[get("clean")]
 async fn clean(db_pool: Data<DBPool>) -> impl Responder {
     let deleted_items = item::clean(&db_pool.sqlite_pool).await.unwrap_or_default();
-    let deleted_base_paths = base::clean(&db_pool.sqlite_pool).await.unwrap_or_default();
 
     web::Json(format!(
         "{{
         \"deleted_items\": {},
-        \"deleted_base_paths\": {},
     }}",
-        deleted_items, deleted_base_paths,
+        deleted_items,
     ))
 }
 

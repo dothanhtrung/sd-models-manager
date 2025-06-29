@@ -1,63 +1,81 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link href="/css/tailwind_output.css" rel="stylesheet">
-    <title>Item Viewer</title>
-</head>
-<body class="bg-gray-100 text-gray-800">
-<div class="container mx-auto px-4 py-6">
-    <h1 class="text-3xl font-bold mb-6">Item Detail</h1>
+{% include "partial/header.html" %}
+{% include "partial/search.html" %}
+{% include "partial/sync_reload.html" %}
 
-    <div id="content" class="flex flex-col md:flex-row gap-6">
-        <!-- Left: Image and name -->
-        <div class="md:w-auto w-full">
-            <img id="preview" src="" alt="Preview" class="max-w-full object-contain rounded-lg border mb-4" />
-            <h2 id="name" class="text-2xl font-semibold break-all"></h2>
-        </div>
+<div class="flex grid-cols-2 py-5">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-gray-900 border-r border-gray-800 p-4 flex-shrink-0">
+        <span id="item-tags"
+              class="flex flex-col gap-2 mt-2  justify-center justify-items-center justify-self-center"></span>
+    </aside>
 
-        <!-- Right: JSON Info -->
-        <div class="flex-1 flex flex-col w-full">
-            <label class="block mb-2 text-lg font-medium">Item Info (Raw JSON)</label>
-            <textarea id="infoBox" readonly
-                      class="w-full h-auto min-h-[300px] grow p-4 border rounded-lg font-mono text-sm bg-white resize-y overflow-auto"></textarea>
+    <div id="item-content" class="hidden space-y-6">
+        {% include "partial/loading.html" %}
+
+        <div class="grid sm:grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Left: Details -->
+            <div class="space-y-3 w-full">
+                <div><span id="item-name" class="font-bold text-2xl"></span></div>
+                <div><strong class="text-purple-400">Model name:</strong> <span id="item-model"></span></div>
+                <div><strong class="text-purple-400">Path:</strong><br><span id="item-path"
+                                                                             class="break-all"></span>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold mb-2 text-purple-400">Info</h2>
+                    <pre id="item-info"
+                         class="bg-gray-900 p-4 rounded text-sm overflow-x-auto whitespace-pre-wrap border border-gray-800"></pre>
+                </div>
+            </div>
+
+            <!-- Right: Image -->
+            <div>
+                <img id="item-preview" src="" alt="Preview" class="w-full rounded shadow border border-gray-700">
+            </div>
+
         </div>
     </div>
+
+</div>
 </div>
 
 <script>
-    async function fetchItem() {
-        const path = window.location.pathname;
-        const itemId = path.split("/").pop();
+    async function refreshContent() {
+        document.addEventListener("DOMContentLoaded", async () => {
+            const res = await fetch(getApiUrl());
+            const json = await res.json();
 
-        try {
-            const res = await fetch(`/api/item/${itemId}`);
-            const data = await res.json();
-            const item = data.items?.[0];
+            const item = json.items?.[0];
+            if (!item) return;
 
-            if (!item) {
-                document.getElementById("content").innerHTML = `<p class="text-red-600">Item not found.</p>`;
-                return;
-            }
+            document.getElementById("item-name").textContent = item.name || "<Unknow>";
+            document.getElementById("item-model").textContent = item.model_name || "";
+            document.getElementById("item-path").textContent = item.path || "";
+            document.getElementById("item-preview").src = item.preview || "";
+            const tagContainer = document.getElementById("item-tags");
+            tagContainer.innerHTML = "";
+            (item.tags || []).forEach(tag => {
+                const a = document.createElement("a");
+                a.href = `/tag/${encodeURIComponent(tag)}`;
+                a.textContent = tag;
+                a.className = " text-emerald-100 px-2 py-0.9 rounded text-sm hover:text-emerald-200 transition  justify-center justify-items-center justify-self-center";
+                tagContainer.appendChild(a);
+            });
+            document.getElementById("item-info").textContent = formatJson(item.info);
 
-            document.getElementById("preview").src = item.preview;
-            document.getElementById("name").textContent = item.name;
+            document.getElementById("item-content").classList.remove("hidden");
+        });
 
-            // Pretty print JSON if it's valid, else fallback to raw
+        function formatJson(infoStr) {
             try {
-                const parsed = JSON.parse(item.info || "{}");
-                document.getElementById("infoBox").value = JSON.stringify(parsed, null, 2);
-            } catch {
-                document.getElementById("infoBox").value = item.info || "{}";
+                return JSON.stringify(JSON.parse(infoStr), null, 2);
+            } catch (e) {
+                return infoStr;
             }
-        } catch (err) {
-            document.getElementById("content").innerHTML = `<p class="text-red-600">Failed to load item.</p>`;
-            console.error(err);
         }
     }
 
-    fetchItem();
+    refreshContent();
 </script>
+
 </body>
 </html>
